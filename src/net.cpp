@@ -1772,7 +1772,8 @@ void ThreadOpenConnections()
 					{
 						try
 						{
-							pnode->PushVersion();
+							uint64 nonce = 0; 
+							pnode->PushMessage("ping", nonce);
 							if( nBestHeight2 >= nBestHeight )
 							{
 								printf("CheckCon: [%s]\n", pnode->addrName.c_str());
