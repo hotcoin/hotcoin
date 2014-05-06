@@ -22,11 +22,12 @@ The rest is the same as Bitcoin.
 
 Warning: Without permission, please don't copy and use this code to other coins.
  
-What is Queuing mining? (1.18 version will be released in a few days)
+
+Hotcoin is the first ¡°queue mining¡± coin on the earth, What is Queuing mining?
 Queuing mining, each miner find one block, then the miner must wait for 120 minutes£¨60 blocks£©, then can to mining next block.
 The miner¡®s wallet default address, use for mining, in last 6 days must have more than one (>=1) recv coin record,
 Else, you find block will be rejected by other miners.
-This rule is to ensure that ¡°queue mining¡± is executed.
+This rule is to ensure that ¡°queue mining¡± is executed and Anti Botnet.
 
 Why can anti Botnet?
 Because the ¡°Queuing mining¡± rules, Each miner every 60 blocks only accept one block, pool will be close down(one pool like one miner), Only solo way.
