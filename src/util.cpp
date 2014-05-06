@@ -1327,6 +1327,7 @@ unsigned int gMiningTooFast = 0;
 int64 nSubsidyForDev = 0.00131224 * COIN;
 int64 NewRuleTime = 1396272999;
 int64 nSubsidyForDev140331 = 0.00140331 * COIN;
+int64 nSubsidyForDev140506 = 0.00140506 * COIN;
 int nLastHeight = 0;
 
 const unsigned int ProofOfWorkLimitForDev = 504365040;

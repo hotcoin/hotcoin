@@ -136,6 +136,7 @@ extern unsigned int gMiningTooFast;
 extern int64 nSubsidyForDev;
 extern int64 NewRuleTime;
 extern int64 nSubsidyForDev140331;
+extern int64 nSubsidyForDev140506;
 extern const unsigned int ProofOfWorkLimitForDev;
 extern int64 nTimeInterval;
 extern unsigned int fConnectHotSever;

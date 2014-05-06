@@ -11,17 +11,30 @@ What is Hotcoin?
 
 Hotcoin is a lite version of Bitcoin using scrypt as a proof-of-work algorithm.
  - 2 minute block targets
- - subsidy halves in 290k blocks (~4 years)
+ - subsidy halves in 120k blocks (~4 years)
  - ~29 million total coins
 
 The rest is the same as Bitcoin.
  - 40 coins per block
- - Low difficulty, CPU and GPU both can mining.
+ - Lowest difficulty, CPU and GPU both can mining.
  - The whole network within two minutes only accept one block.
- - Prevent mining machine, and smart mining pool.
+ - Queuing mining, Anti Botnet, Resistant ASIC and smart mining pool.
+
+Warning: Without permission, please don't copy and use this code to other coins.
+ 
+What is Queuing mining? (1.18 version will be released in a few days)
+Queuing mining, each miner find one block, then the miner must wait for 120 minutes£¨60 blocks£©, then can to mining next block.
+The miner¡®s wallet default address, use for mining, in last 6 days must have more than one (>=1) recv coin record,
+Else, you find block will be rejected by other miners.
+This rule is to ensure that ¡°queue mining¡± is executed.
+
+Why can anti Botnet?
+Because the ¡°Queuing mining¡± rules, Each miner every 60 blocks only accept one block, pool will be close down(one pool like one miner), Only solo way.
+On solo way, Hackers must use the wallet app to mining, and his wallet in each 6 days must have more than one (>=1) recv coin record,
+Else, his wallet found block will be rejected by other miners.
 
 For more information, as well as an immediately useable, binary version of
-the Hotcoin client sofware, see http://www.hot-coin.org.
+the Hotcoin client sofware, see http://hot-coin.org/cn/?page_id=50 .
 
 License
 -------

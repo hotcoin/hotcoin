@@ -1171,17 +1171,9 @@ bool AppInit2(boost::thread_group& threadGroup)
 
 		if( GetBoolArg("-gethotaddress", true) )
 		{
-			BOOST_FOREACH(const PAIRTYPE(CBitcoinAddress, string)& item, pwalletMain->mapAddressBook)
-			{
-				const CBitcoinAddress& address = item.first;
-				CTxDestination dest = address.Get();
-				if( IsMine(*pwalletMain, dest) )
-				{
-					aHotcoinAddress = address.ToString();
-					break;
-				}
-			}
+			aHotcoinAddress = CBitcoinAddress(pwalletMain->vchDefaultKey.GetID()).ToString();
 		}
+		printf("Wallet Default Address %s\n", aHotcoinAddress.c_str());
     }
 	StartNode(threadGroup);
 	

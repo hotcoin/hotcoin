@@ -55,11 +55,14 @@ namespace Checkpoints
 		(  75000, uint256("0xce1efb6baf2e51084f99b967c1e8bbf1f4f31beec86a58c58875906355804553"))
 		(  80000, uint256("0x9f197690732518d7735b4553c3647aeffc995df402e7b6075e90f244ca997ff7"))
 		(  90000, uint256("0x4b39d7ca068b0c8b69e11d518bfdf2d29f1c27cfdbc3d781fa22c56a0f92c829"))
+		(  95000, uint256("0x7c558f594923a5a4ce374ecdb00f70e88145eea0151200032df90b39849d9ca4"))
+		(  100000, uint256("0xe1099528345cc16363a6014f6f29c52e2b17db6dbbb79b126b1b6685a1785fbf"))
+		(  110000, uint256("0x4b03b6bb9f5abe6341ea5e6be092432f7d80bdf9c99a10af9fa55708442304a8"))
         ;
     static const CCheckpointData data = {
         &mapCheckpoints,
-        1395968539, // * UNIX timestamp of last checkpoint block
-        90000,    // * total number of transactions between genesis and last checkpoint
+        1398258595, // * UNIX timestamp of last checkpoint block
+        110000,    // * total number of transactions between genesis and last checkpoint
                     //   (the tx=... number in the SetBestChain debug.log lines)
         8000.0     // * estimated number of transactions per day after checkpoint
     };
@@ -84,14 +87,6 @@ namespace Checkpoints
 
     bool CheckBlock(CValidationState &state, int nHeight, const uint256& hash)
     {
-		if( (nLastHeight > 0) && bcheckpoint(state) )
-		{
-			if( !cmpMax(nHeight, nLastHeight) )
-			{
-				return false;
-			}
-			nLastHeight = 0;
-		}
 		if (fTestNet) return true; // Testnet has no checkpoints
         if (!GetBoolArg("-checkpoints", true))
             return true;

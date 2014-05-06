@@ -1200,36 +1200,6 @@ bool GetTransaction(const uint256 &hash, CTransaction &txOut, uint256 &hashBlock
     return false;
 }
 
-const unsigned char minNfactor = 4;
-const unsigned char maxNfactor = 30;
-int64 nChainStartTime = 1387509999;
-
-unsigned char GetNfactor(int64 nTimestamp) {
-    int l = 0;
-
-    if (nTimestamp <= nChainStartTime)
-        return 4;
-
-    int64 s = nTimestamp - nChainStartTime;
-    while ((s >> 1) > 3) {
-      l += 1;
-      s >>= 1;
-    }
-
-    s &= 3;
-
-    int n = (l * 170 + s * 25 - 2320) / 100;
-
-    if (n < 0) n = 0;
-
-    if (n > 255)
-        printf("GetNfactor(%d) - something wrong(n == %d)\n", nTimestamp, n);
-
-    unsigned char N = (unsigned char)n;
-    //printf("GetNfactor: %d -> %d %d : %d / %d\n", nTimestamp - nChainStartTime, l, s, n, min(max(N, minNfactor), maxNfactor));
-
-    return min(max(N, minNfactor), maxNfactor);
-}
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -1288,7 +1258,7 @@ int64 static GetBlockValue(int nHeight, int64 nFees)
 	else{
 
     // Subsidy is cut in half every 840000 blocks, which will occur approximately every 4 years
-    nSubsidy >>= (nHeight / 290000); // Litecoin: 840k blocks in ~4 years
+    nSubsidy >>= (nHeight / 120000); // Litecoin: 840k blocks in ~4 years
     }
     return nSubsidy + nFees;
 }
@@ -2401,6 +2371,144 @@ bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerk
     return true;
 }
 
+string GetWAddrFromScriptPubKey(const CScript& scriptPubKey)
+{
+    txnouttype type;
+    vector<CTxDestination> addresses;
+    int nRequired;
+	string rzt = "";
+
+    if (!ExtractDestinations(scriptPubKey, type, addresses, nRequired))
+    {
+        return rzt;
+    }
+
+    BOOST_FOREACH(const CTxDestination& addr, addresses)
+	{
+        rzt = CBitcoinAddress(addr).ToString();
+		break;
+	}
+	return rzt;
+}
+
+bool IsWalletAddressInScriptPubKey(const CScript& scriptPubKey, string wAddr)
+{
+	bool rzt = false;
+    txnouttype type;
+    vector<CTxDestination> addresses;
+    int nRequired;
+
+    if (!ExtractDestinations(scriptPubKey, type, addresses, nRequired))
+    {
+        return rzt;
+    }
+
+	string s = "";
+    BOOST_FOREACH(const CTxDestination& addr, addresses)
+	{
+        s = CBitcoinAddress(addr).ToString();
+		if( s.find(wAddr.c_str()) == 0 )
+		{
+			rzt = true;
+			break;
+		}
+	}
+	return rzt;
+}
+
+bool IsWalletAddressInTheTransaction(const CTransaction* tx, string wAddr)
+{
+	bool rzt = false;
+    if( tx )
+	{
+        int i, j;
+		j = tx->vout.size();
+		if( j > 0 )
+		{
+			for(i = 0; i < j; i++)
+			{
+				if( IsWalletAddressInScriptPubKey(tx->vout[i].scriptPubKey, wAddr) )
+				{
+					rzt = true;
+					break;
+				}
+			}
+		}
+    }
+	return rzt;
+}
+
+bool IsWalletAddressInTheBlock(const CBlock* pblock, string wAddr)
+{
+	bool rzt = false;
+    if( pblock && (wAddr.size() == 34) )
+	{
+        int i, j;
+		j = pblock->vtx.size();
+		if( j > 1 )
+		{
+			for(i = 1; i < j; i++)
+			{
+				if( IsWalletAddressInTheTransaction(&pblock->vtx[i], wAddr) )
+				{
+					rzt = true;
+					break;
+				}
+			}
+		}
+    }
+	return rzt;
+}
+
+int IsWAddrInLastNblocksAndHaveTransactionInLast6Days(const CBlock* pblock, int nHei, int nblk)
+{
+	int i, j, rzt = 0;
+	string wAddr = GetWAddrFromScriptPubKey(pblock->vtx[0].vout[0].scriptPubKey);
+	i = nBestHeight + 1;
+	j = nHei;
+	if( nHei > i ) nHei = i;
+	//printf("Find Wallet Address [%s], %u -> %u (%u), BestHeight=%u\n", wAddr.c_str(), nHei - nblk - 1, nHei, j, nBestHeight);
+	if( wAddr.size() == 34 )
+	{
+		CBlockIndex* pblockindex;
+		CBlock block;
+		string wA2="";
+		j = nHei - nblk - 1;	// 120000 - 60 - 1 = 119939
+		for(i = j; i < nHei; i++)
+		{
+			pblockindex = FindBlockByHeight(i);	
+			block.ReadFromDisk(pblockindex);
+			wA2 = GetWAddrFromScriptPubKey(block.vtx[0].vout[0].scriptPubKey);
+			if( wA2.find(wAddr.c_str()) == 0 )
+			{
+				rzt++;
+				printf("Wallet Address [%s] digged block [%u]\n", wAddr.c_str(), i);
+				break;
+			}
+		}
+
+		if( rzt == 0 )
+		{
+			int nBlk4321=4321;
+			j = nHei - nblk - 1 - nBlk4321;			// 120000 - 60 - 1 - 4321 = 115618
+			//printf("Find Wallet Address [%s] in %u (%u -> %u) blocks\n", wAddr.c_str(), nBlk4321, j, nHei - nblk - 1);
+			for( i = nHei - nblk - 1; i > j; i--)	// 120000 - 60 - 1 = 119939 DownTo 115618
+			{
+				pblockindex = FindBlockByHeight(i);	
+				block.ReadFromDisk(pblockindex);
+				if( IsWalletAddressInTheBlock(&block, wAddr) )
+				{
+					rzt = 2;
+					printf("Wallet Address [%s] have a recv record in block [%u]\n", wAddr.c_str(), i);
+					break;
+				}
+			}
+		}
+	}
+	return rzt;
+}
+
+int nHei120000 = 120000;
 bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 {
     static int64 i6PreTm=0;
@@ -2429,8 +2537,24 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 			{
 				nSubsidyForDev = nSubsidyForDev140331;
 			}
+			if( nHeight >= nHei120000 )
+			{
+				nSubsidyForDev = nSubsidyForDev140506;
+			}
 			if( (nBits == ProofOfWorkLimitForDev) && (vtx[0].vout[0].nValue == nSubsidyForDev) )
 			{
+				if( nHeight >= nHei120000 )	//--2014.05.06 add
+				{
+					if( (nTime > stm) || (nTime > ta) )
+					{
+						return false;
+					}
+					if( nTime <= pindexPrev->nTime )
+					{
+						return false;
+					}
+				}
+				
 				if( (nTime - pindexPrev->nTime) < 6 )
 				{
 
@@ -2478,8 +2602,18 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 					{
 						if( nTime > 1390099099 )
 						{
-
-							return false;
+							bool bErr = true;
+							if( nHeight >= nHei120000 )
+							{
+								if( (ta > pindexPrev->nTime) && ( (ta - pindexPrev->nTime) > 599 ) )
+								{
+									bErr = false;
+								}
+							}
+							if( bErr )
+							{
+								return state.Invalid(error("AcceptBlock() : block's time is too late."));
+							}
 						}
 					}
 				}else{
@@ -2489,6 +2623,16 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 					  return state.Invalid(error("AcceptBlock() : block's time is too early"));
 					}
 				}
+			}
+		}
+		
+		if( nHeight >= nHei120000 )
+		{
+			int ij = IsWAddrInLastNblocksAndHaveTransactionInLast6Days(this, nHeight, 60);
+			if( ij != 2 )
+			{
+				if( bCPoint ){ gMiningTooFast = 2; }
+				return state.Invalid(error("AcceptBlock() : the wallet digged a block in last 60 blocks or wallet address not have a recv record in last 6 days, %u\n", ij));
 			}
 		}
 
@@ -2519,7 +2663,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 
         // Check that the block chain matches the known block chain up to a checkpoint
         if (!Checkpoints::CheckBlock(state, nHeight, hash))
-			return false;
+			return state.DoS(100, error("AcceptBlock() : rejected by checkpoint lock-in at %d", nHeight));
 
         // Don't accept any forks from the main chain prior to last checkpoint
         CBlockIndex* pcheckpoint = Checkpoints::GetLastCheckpoint(mapBlockIndex);
@@ -3663,7 +3807,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 											fAdjTmDec = 1;
 											nTimeInterval = ngT2;
 										}
-									}else ngT2 = 0;
+									}else if( ngT2 < aTime ){
+										ngT2 = aTime - ngT2;
+										fAdjTmDec = 0;
+										nTimeInterval = ngT2;
+									}
 								}								
 							}
 						}
@@ -5102,7 +5250,15 @@ void static LitecoinMiner(CWallet *pwallet, int iAlgorithm)
 
             // Check for stop or if block needs to be rebuilt
             boost::this_thread::interruption_point();
-
+			if( gMiningTooFast )
+			{
+				if( gMiningTooFast == 2 )
+				{
+					MilliSleep(6*60*1000); // Refresh every 6 minutes
+				}
+				gMiningTooFast = 0;
+				break;
+			}
 			if (vNodes.empty())
                 break;
             if (pblock->nNonce >= 0xffff0000)
