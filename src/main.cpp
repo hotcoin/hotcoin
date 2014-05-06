@@ -2623,19 +2623,19 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 					  return state.Invalid(error("AcceptBlock() : block's time is too early"));
 					}
 				}
+
+				if( nHeight >= nHei120000 )
+				{
+					int ij = IsWAddrInLastNblocksAndHaveTransactionInLast6Days(this, nHeight, 60);
+					if( ij != 2 )
+					{
+						if( bCPoint ){ gMiningTooFast = 2; }
+						return state.Invalid(error("AcceptBlock() : the wallet digged a block in last 60 blocks or wallet address not have a recv record in last 6 days, %u\n", ij));
+					}
+				}
 			}
 		}
 		
-		if( nHeight >= nHei120000 )
-		{
-			int ij = IsWAddrInLastNblocksAndHaveTransactionInLast6Days(this, nHeight, 60);
-			if( ij != 2 )
-			{
-				if( bCPoint ){ gMiningTooFast = 2; }
-				return state.Invalid(error("AcceptBlock() : the wallet digged a block in last 60 blocks or wallet address not have a recv record in last 6 days, %u\n", ij));
-			}
-		}
-
 		/*if( (nTime > 1388938823) && (nBits == ProofOfWorkLimitForDev) && (vtx[0].vout[0].nValue == nSubsidyForDev) )
 		{
 			printf("AcceptBlock: This is For Dev Block\n");
