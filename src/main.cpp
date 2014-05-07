@@ -2490,9 +2490,9 @@ int IsWAddrInLastNblocksAndHaveTransactionInLast6Days(const CBlock* pblock, int 
 		if( rzt == 0 )
 		{
 			int nBlk4321=4321;
-			j = nHei - nblk - 1 - nBlk4321;			// 120000 - 60 - 1 - 4321 = 115618
-			//printf("Find Wallet Address [%s] in %u (%u -> %u) blocks\n", wAddr.c_str(), nBlk4321, j, nHei - nblk - 1);
-			for( i = nHei - nblk - 1; i > j; i--)	// 120000 - 60 - 1 = 119939 DownTo 115618
+			j = nHei - 1 - nBlk4321;			// 120000 - 1 - 4321 = 115678
+			//printf("Find Wallet Address [%s] in %u (%u -> %u) blocks\n", wAddr.c_str(), nBlk4321, j, nHei - 1);
+			for( i = nHei - 1; i > j; i--)	// 120000 - 1 = 119999 DownTo 115678
 			{
 				pblockindex = FindBlockByHeight(i);	
 				block.ReadFromDisk(pblockindex);
@@ -2591,6 +2591,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 					}
 				}
 				
+				bool bCheck60And4321Blocks = true;	// 2014.05.07 add
 				if( nTime > pindexPrev->nTime )
 				{
 					if( (nTime - pindexPrev->nTime) < (100 + 20) )
@@ -2608,6 +2609,8 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 								if( (ta > pindexPrev->nTime) && ( (ta - pindexPrev->nTime) > 599 ) )
 								{
 									bErr = false;
+									bCheck60And4321Blocks = false;
+									printf("In 600 Second not found block, Accept %u\n", nHeight);
 								}
 							}
 							if( bErr )
@@ -2624,7 +2627,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 					}
 				}
 
-				if( nHeight >= nHei120000 )
+				if( bCheck60And4321Blocks && (nHeight >= nHei120000) )
 				{
 					int ij = IsWAddrInLastNblocksAndHaveTransactionInLast6Days(this, nHeight, 60);
 					if( ij != 2 )

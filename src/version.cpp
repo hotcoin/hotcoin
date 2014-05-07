@@ -11,7 +11,7 @@
 const std::string CLIENT_NAME("Hotcoin");
 
 // Client version number
-#define CLIENT_VERSION_SUFFIX   "-beta-118"
+#define CLIENT_VERSION_SUFFIX   "-beta-119"
 
 
 // The following part of the code determines the CLIENT_BUILD variable.
