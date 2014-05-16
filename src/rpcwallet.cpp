@@ -47,9 +47,9 @@ void WalletTxToJSON(const CWalletTx& wtx, Object& entry)
     entry.push_back(Pair("txid", wtx.GetHash().GetHex()));
     entry.push_back(Pair("time", (boost::int64_t)wtx.GetTxTime()));
     entry.push_back(Pair("timereceived", (boost::int64_t)wtx.nTimeReceived));
-	entry.push_back(Pair("hotdata", wtx.hotdata));	//if( wtx.nVersion > 1 ){ entry.push_back(Pair("hotdata", (CWalletTx *)wtx.hotdata)); }
-	entry.push_back(Pair("repcount", (boost::int64_t)wtx.nRepcount));
-	entry.push_back(Pair("repdata", wtx.repdata));
+	//entry.push_back(Pair("hotdata", wtx.hotdata));	//if( wtx.nVersion > 1 ){ entry.push_back(Pair("hotdata", (CWalletTx *)wtx.hotdata)); }
+	//entry.push_back(Pair("repcount", (boost::int64_t)wtx.nRepcount));
+	//entry.push_back(Pair("repdata", wtx.repdata));
     BOOST_FOREACH(const PAIRTYPE(string,string)& item, wtx.mapValue)
     entry.push_back(Pair(item.first, item.second));
 }
@@ -754,7 +754,7 @@ static CScript _createmultisig(const Array& params)
     {
         const std::string& ks = keys[i].get_str();
 
-        // Case 1: Litecoin address and we have full public key:
+        // Case 1: Hotcoin address and we have full public key:
         CBitcoinAddress address(ks);
         if (pwalletMain && address.IsValid())
         {

@@ -2,6 +2,7 @@ Hotcoin integration/staging tree
 ================================
 
 http://www.hot-coin.org
+https://bitcointalk.org/index.php?topic=382947.0
 
 Copyright (c) 2009-2013 Bitcoin Developers
 Copyright (c) 2013-2014 Hotcoin Developers
@@ -15,24 +16,33 @@ Hotcoin is a lite version of Bitcoin using scrypt as a proof-of-work algorithm.
  - ~29 million total coins
 
 The rest is the same as Bitcoin.
- - 40 coins per block
- - Lowest difficulty, CPU and GPU both can mining.
- - The whole network within two minutes only accept one block.
- - Queuing mining, Anti Botnet, Resistant ASIC and smart mining pool.
+ - 40 coins per block,
+ - No IPO, No PoS,
+ - Lowest difficulty, CPU and GPU both can mining,
+ - The whole network within two minutes only accept one block,
+ - Queuing mining, Anti Botnet, Resistant ASIC and smart mining pool,
+ - Energy saving and environmental protection.
 
-Warning: Without permission, please don't copy and use this code to other coins.
+Warning: Without our permission, please don't copy and use this code to other coins.
  
 
-Hotcoin is the first ¡°queue mining¡± coin on the earth, What is Queuing mining?
+Hotcoin is the first ¡°queue mining¡± coin on the word, What is Queuing mining?
 Queuing mining, each miner find one block, then the miner must wait for 120 minutes£¨60 blocks£©, then can to mining next block.
 The miner¡®s wallet default address, use for mining, in last 6 days must have more than one (>=1) recv coin record,
-Else, you find block will be rejected by other miners.
+Else, the miner find block will be rejected by othes.
 This rule is to ensure that ¡°queue mining¡± is executed and Anti Botnet.
 
 Why can anti Botnet?
 Because the ¡°Queuing mining¡± rules, Each miner every 60 blocks only accept one block, pool will be close down(one pool like one miner), Only solo way.
 On solo way, Hackers must use the wallet app to mining, and his wallet in each 6 days must have more than one (>=1) recv coin record,
 Else, his wallet found block will be rejected by other miners.
+
+Why not add PoS?
+Because:
+PoS Coin's total amount not determined, and the total amount has been increasing.
+PoS coin like a cup of sugar water, and the water has been increasing, sweetness is getting less.
+PoS coin = inflation of coins.
+
 
 For more information, as well as an immediately useable, binary version of
 the Hotcoin client sofware, see http://hot-coin.org/cn/?page_id=50 .
