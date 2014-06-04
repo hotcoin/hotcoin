@@ -2508,7 +2508,56 @@ int IsWAddrInLastNblocksAndHaveTransactionInLast6Days(const CBlock* pblock, int 
 	return rzt;
 }
 
-int nHei120000 = 120000;
+int prevBlockIsForFast(const CBlockIndex* pbIndex, const CBlock* curBlock, int nblk )
+{
+	int64 rzt = 0;
+	if( pbIndex )
+	{
+		CBlock block;
+		block.ReadFromDisk(pbIndex);
+				
+		if( (block.nBits == ProofOfWorkLimitForDev) && (block.vtx[0].vout[0].nValue == nSubsidyForDev140506) )
+		{
+			// is for inc speed block
+			CBlockIndex* pblockindex;
+			int i, j, iFind = 0, nHei = pbIndex->nHeight;
+			i = nBestHeight;
+			j = nHei;
+			if( nHei > i ) nHei = i;
+
+			j = nHei - nblk;	// 11 - 10 = 1
+			for(i = nHei; i > j; i--)
+			{
+				pblockindex = FindBlockByHeight(i);	
+				block.ReadFromDisk(pblockindex);
+				
+				if( fDebug ) 
+					printf("block %u, nValue=%"PRI64d"\n", i, block.vtx[0].vout[0].nValue);
+				if( block.vtx[0].vout[0].nValue != nSubsidyForDev140506 )
+				{
+					unsigned int cT =curBlock->nTime, bT =block.nTime;
+					if( fDebug )
+						printf("block %u nTime =%u, curBlock nTime =%u\n", i, bT, cT);
+					iFind = 1;
+					if( cT > bT )
+					{
+						unsigned int iTb = cT - bT;
+						if( (iTb >= 120) && (iTb <= 480) )
+						{
+								rzt++;
+						}
+					}
+					break;
+				}
+			}
+			if( iFind == 0 )		
+				rzt++;
+		}
+	}
+	return rzt;
+}
+
+int nHei120000 = 120000, nHei130000 = 130000;
 bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 {
     static int64 i6PreTm=0;
@@ -2594,10 +2643,18 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 				bool bCheck60And4321Blocks = true;	// 2014.05.07 add
 				if( nTime > pindexPrev->nTime )
 				{
+					int iPrevIs4Fast = 0;
 					if( (nTime - pindexPrev->nTime) < (100 + 20) )
 					{
-
-						return false;
+						if( nHeight >= nHei130000 )
+						{
+							if( pindexPrev->nBits == ProofOfWorkLimitForDev )
+								iPrevIs4Fast = prevBlockIsForFast(pindexPrev, this, 10);
+						}
+						if( iPrevIs4Fast == 0 )
+						{
+							return false;
+						}
 					}
 					else if( (nTime - pindexPrev->nTime) > 480 )
 					{
