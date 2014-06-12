@@ -660,7 +660,7 @@ bool GetMyExternalIP(CNetAddr& ipRet)
 	dGuiMode = 1;	
 #endif
 
-    GetMyExternalIP3();
+    //GetMyExternalIP3();
 	
 	for (int nLookup = 0; nLookup <= 1; nLookup++)
     for (int nHost = 1; nHost <= 2; nHost++)
@@ -1729,7 +1729,7 @@ void ThreadOpenConnections()
     int64 nStart = GetTime();
 	int64 nTm, nStart2 = nStart;
 	int nBestHeight2 = nBestHeight;
-	bool bCheckCon = GetBoolArg("-bcheckconnect", true);
+	bool bCheckCon = GetBoolArg("-bcheckconnect", false);
     loop
     {
         ProcessOneShot();
