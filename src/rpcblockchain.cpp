@@ -313,3 +313,32 @@ Value verifychain(const Array& params, bool fHelp)
     return VerifyDB(nCheckLevel, nCheckDepth);
 }
 
+std::string RollbackBlocks(int nBlocks) 
+{
+	std::string s;
+	CValidationState state;
+	int nHei = nBestHeight - nBlocks;
+	try{
+		
+		CBlockIndex* pindexNew = FindBlockByHeight(nHei);
+		if( SetBestChain(state, pindexNew) )
+		{
+			//RestartNets();
+			s = strprintf("Rollback to block %u", nHei);
+		}else{ s = "RollbackBlocks false"; }
+	} catch(std::runtime_error &e) {
+		s = "Rollback to block error";
+		//s = strprintf("Rollback to block error: %s", e.what().c_str());
+	}
+	return s;
+}
+
+Value rollbackto(const Array& params, bool fHelp) 
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+        throw runtime_error(
+            "rollbackto <nBlocks=150>\n"
+            "Rollback N Blocks from current Block Chain\n"
+        );
+	return RollbackBlocks(params.size() > 0 ? params[0].get_int() : 150);
+}
