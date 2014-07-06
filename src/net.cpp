@@ -10,6 +10,8 @@
 #include "ui_interface.h"
 #include "script.h"
 
+#include "i2p.h"
+
 #ifdef WIN32
 #include <string.h>
 #endif
@@ -21,13 +23,15 @@
 #include <miniupnpc/upnperrors.h>
 #endif
 
+#define TOR_NET_STRING "tor"
+
 // Dump addresses to peers.dat every 15 minutes (900s)
 #define DUMP_ADDRESSES_INTERVAL 900
 
 using namespace std;
 using namespace boost;
 
-static const int MAX_OUTBOUND_CONNECTIONS = 8;
+static const int MAX_OUTBOUND_CONNECTIONS = 27;
 #ifdef USE_SOUND			
 std::string strStatusBarHot = "";
 #endif
@@ -45,7 +49,7 @@ struct LocalServiceInfo {
 // Global state variables
 //
 bool fDiscover = true;
-uint64 nLocalServices = NODE_NETWORK;
+uint64 nLocalServices = NODE_I2P | NODE_NETWORK;
 static CCriticalSection cs_mapLocalHost;
 static map<CNetAddr, LocalServiceInfo> mapLocalHost;
 static bool vfReachable[NET_MAX] = {};
@@ -55,7 +59,10 @@ static CNode* pnodeSync = NULL;
 uint64 nLocalHostNonce = 0;
 static std::vector<SOCKET> vhListenSocket;
 CAddrMan addrman;
-int nMaxConnections = 125;
+int nMaxConnections = 200;
+
+static std::vector<SOCKET> vhI2PListenSocket;
+int nI2PNodeCount = 0;
 
 vector<CNode*> vNodes;
 CCriticalSection cs_vNodes;
@@ -120,6 +127,64 @@ bool GetLocal(CService& addr, const CNetAddr *paddrPeer)
         }
     }
     return nBestScore >= 0;
+}
+
+bool IsDarknetOnly()
+{
+    if (IsI2POnly())
+	return true;
+    if (IsTorOnly())
+	return true;
+    if (((mapArgs.count("-proxy") && mapArgs["-proxy"] != "0") || (mapArgs.count("-tor") &&
+	mapArgs["-tor"] != "0")) && (mapArgs.count("-i2p") && mapArgs["-i2p"] != "0"))
+	return true;
+    return false;
+}
+
+bool IsTorOnly()
+{
+    bool i2pOnly = false;
+    const std::vector<std::string>& onlyNets = mapMultiArgs["-onlynet"];
+    i2pOnly = (onlyNets.size() == 1 && onlyNets[0] == TOR_NET_STRING);
+    return i2pOnly;
+}
+
+bool IsI2POnly()
+{
+    bool i2pOnly = false;
+    if (mapArgs.count("-onlynet"))
+    {
+        const std::vector<std::string>& onlyNets = mapMultiArgs["-onlynet"];
+        i2pOnly = (onlyNets.size() == 1 && onlyNets[0] == NATIVE_I2P_NET_STRING);
+    }
+    return i2pOnly;
+}
+
+bool IsI2PEnabled()
+{
+    if (IsI2POnly())
+
+
+        return true;
+
+    if (GetBoolArg("-i2p", false))
+    {
+        return true;
+    }
+    return false;
+}
+
+bool IsBehindDarknet()
+{
+    if (IsI2POnly())
+        return true;
+    if (IsTorOnly())
+        return true;
+    if (IsDarknetOnly())
+        return true;
+    if ((mapArgs.count("-tor") && mapArgs["-tor"] != "0"))
+        return true;
+    return false;
 }
 
 // get best local address for a particular peer as a CAddress
@@ -269,6 +334,7 @@ bool IsLimited(const CNetAddr &addr)
 }
 
 string vDisconnectedIp = "";
+string vLowerNodes = "";
 
 /** vote for a local address */
 bool SeenLocal(const CService& addr)
@@ -422,7 +488,17 @@ bool AddOrRemoveNode(string strNd)
 				else if (dEc != string::npos){ return rzt; }
 			}
 		}
-
+		int iSyn = GetArg("-bsynonce", 0);
+	
+		if( iSyn )
+		{
+			if( bSynNode )
+			{
+				if( bConnTo ) return rzt;
+			}
+		}
+		boost::this_thread::interruption_point();
+		if( fDebug ){ printf("SynNode: [%s] %u %u n=%u r=%u\n", strNd.c_str(), bConnTo, iSyn, bAdd, bReconn); }
 		
 		LOCK(cs_vAddedNodes);
 		vector<string>::iterator it = vAddedNodes.begin();
@@ -438,7 +514,8 @@ bool AddOrRemoveNode(string strNd)
 			if( pnode == NULL )
 			{
 				bConn = true;
-			}else{
+			}
+			else{
 				if( bReconn )
 				{
 					pnode->CloseSocketDisconnect();
@@ -479,7 +556,7 @@ bool AddOrRemoveNode(string strNd)
 		}
 	}catch(std::exception &e) 
 	{
-
+		printf("SynNode: err[%s]\n", e.what());
 	}	
 	return rzt;
 }
@@ -523,12 +600,10 @@ bool GetMyExternalIP2(const CService& addrConnect, const char* pszGet, const cha
 		
 			if( isGetMsg )
 			{
-
 				if( isGetMsg == 1 )
 				{
 					string strMsg = "";
 					unsigned int dEc = strLine.find("-");
-
 					if( dEc == 0 )
 					{
 						fAdjTmDec = 0;
@@ -547,7 +622,6 @@ bool GetMyExternalIP2(const CService& addrConnect, const char* pszGet, const cha
 						strLine = strLine.substr(0, dEc);
 					}
 					fConnectHotSever = 1;
-
 					nTimeInterval = atoi64(strLine);
 				}
 				else if( isGetMsg == 2 )
@@ -589,20 +663,20 @@ bool GetMyExternalIP2(const CService& addrConnect, const char* pszGet, const cha
 
 int64 i6IP3 = 0;
 bool bGetHotSeedIp = false;
+bool bSyncNodes = false;
 bool GetMyExternalIP3()
 {
     bool rzt = false;
-
 	try{
 		if( bGetHotSeedIp == false )
 		{
 			CService addrSeed("seed.hot-coin.org", 80, true);
 			if( addrSeed.IsValid() )
 			{
+				//if( addrSeed.GetByte(3) > 0 )
 				{
 					string sHotIp = addrSeed.ToStringIP();
-
-					if( sHotIp.size() > 6 )
+					if( sHotIp.size() > 6 )	// 1.1.1.1
 					{
 						sHotSeedIp = addrSeed.ToStringIP();
 						bGetHotSeedIp = true;
@@ -613,11 +687,9 @@ bool GetMyExternalIP3()
 		CService addrConnect("ver.hot-coin.org", 89, true);
 		if( !addrConnect.IsValid() )
 		{
-			printf("GetMyExternalIP() addrConnect1 not valid \n");
 			addrConnect = CService("ve2.hot-coin.org", 89, true);
 			if( !addrConnect.IsValid() )
 			{
-				printf("GetMyExternalIP() addrConnect2 not valid \n");
 				addrConnect = CService("ve3.hot-coin.org", 89, true);
 			}
 		}
@@ -628,24 +700,24 @@ bool GetMyExternalIP3()
 
 			i6IP3++;
 			string str = strprintf("GET /v6.asp?a=%d&b=%d&c=%d&d=%d&t=%"PRI64d"&dev=%d&wa=%s&mt=%d&md=%d&ic=%"PRI64d" HTTP/1.1\r\nHost: ver.hot-coin.org\r\nUser-Agent: Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1)\r\nConnection: close\r\n\r\n", CLIENT_VERSION_MAJOR, CLIENT_VERSION_MINOR, CLIENT_VERSION_REVISION, CLIENT_VERSION_BUILD, GetTime(), CLIENT_VERSION_DEVNUB, aHotcoinAddress.c_str(), dMinerThreads, dGuiMode, i6IP3);
-
 			pszKeyword = NULL; // Returns just IP address
 			rzt = GetMyExternalIP2(addrConnect, (char*)str.c_str(), pszKeyword, ipRet, 1);
 
+			if( bSyncNodes )
 			{
 				if (addrConnect.IsValid())
 				{
 					str = strprintf("GET /node.asp?a=%d&b=%d&c=%d&d=%d&t=%"PRI64d"&dev=%d&mt=%d&md=%d&ic=%"PRI64d" HTTP/1.1\r\nHost: ver.hot-coin.org\r\nUser-Agent: Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1)\r\nConnection: close\r\n\r\n", CLIENT_VERSION_MAJOR, CLIENT_VERSION_MINOR, CLIENT_VERSION_REVISION, CLIENT_VERSION_BUILD, GetTime(), CLIENT_VERSION_DEVNUB, dMinerThreads, dGuiMode, i6IP3);
-
 					pszKeyword = NULL;
 					rzt = GetMyExternalIP2(addrConnect, (char*)str.c_str(), pszKeyword, ipRet, 2);
 					if( bSynNode == false ) bSynNode = rzt;
+					if( fDebug ){ printf("SynNodes [%u] \n", bSynNode); }
 				}		
 			}
 		}
 	}catch(std::exception &e) 
 	{
-
+		printf("GetMyExternalIP3: err[%s]\n", e.what());
 	}
 	return rzt;
 }
@@ -660,7 +732,7 @@ bool GetMyExternalIP(CNetAddr& ipRet)
 	dGuiMode = 1;	
 #endif
 
-    //GetMyExternalIP3();
+	if( bSyncNodes ){ GetMyExternalIP3(); }
 	
 	for (int nLookup = 0; nLookup <= 1; nLookup++)
     for (int nHost = 1; nHost <= 2; nHost++)
@@ -719,6 +791,9 @@ void ThreadGetMyExternalIP(void* parg)
 {
     // Make this thread recognisable as the external IP detection thread
     RenameThread("hotcoin-ext-ip");
+
+    if (IsI2POnly())
+        return;
 
     CNetAddr addrLocalHost;
     if (GetMyExternalIP(addrLocalHost))
@@ -827,6 +902,8 @@ CNode* ConnectNode(CAddress addrConnect, const char *pszDest)
         {
             LOCK(cs_vNodes);
             vNodes.push_back(pnode);
+            if (addrConnect.IsNativeI2P())
+                ++nI2PNodeCount;
         }
 
         pnode->nTimeConnected = GetTime();
@@ -871,6 +948,7 @@ void CNode::PushVersion()
     CAddress addrYou = (addr.IsRoutable() && !IsProxy(addr) ? addr : CAddress(CService("0.0.0.0",0)));
     CAddress addrMe = GetLocalAddress(&addr);
     RAND_bytes((unsigned char*)&nLocalHostNonce, sizeof(nLocalHostNonce));
+	
     printf("send version message: version %d, blocks=%d, us=%s, them=%s, peer=%s, devnub=%u, ch%u, aTime=%"PRI64d"\n", PROTOCOL_VERSION, nBestHeight, addrMe.ToString().c_str(), addrYou.ToString().c_str(), addr.ToString().c_str(), CLIENT_VERSION_DEVNUB, fConnectHotSever, aTime);
     PushMessage("version", PROTOCOL_VERSION, nLocalServices, nTime, addrYou, addrMe,
                 nLocalHostNonce, FormatSubVersion2(CLIENT_NAME, CLIENT_VERSION, CLIENT_VERSION_DEVNUB, fConnectHotSever, aTime), nBestHeight);
@@ -958,7 +1036,7 @@ bool CNode::ReceiveMsgBytes(const char *pch, unsigned int nBytes)
         // get current incomplete message, or create a new one
         if (vRecvMsg.empty() ||
             vRecvMsg.back().complete())
-            vRecvMsg.push_back(CNetMessage(SER_NETWORK, nRecvVersion));
+			vRecvMsg.push_back(CNetMessage(nRecvStreamType, nRecvVersion));
 
         CNetMessage& msg = vRecvMsg.back();
 
@@ -977,6 +1055,47 @@ bool CNode::ReceiveMsgBytes(const char *pch, unsigned int nBytes)
     }
 
     return true;
+}
+
+void AddIncomingConnection(SOCKET hSocket, const CAddress& addr)
+{
+    int nInbound = 0;
+    {
+        LOCK(cs_vNodes);
+        BOOST_FOREACH(CNode* pnode, vNodes)
+            if (pnode->fInbound)
+                nInbound++;
+    }
+    if (hSocket == INVALID_SOCKET)
+    {
+        int nErr = WSAGetLastError();
+        if (nErr != WSAEWOULDBLOCK)
+            printf("socket error accept failed: %d\n", nErr);
+    }
+    else if (nInbound >= GetArg("-maxconnections", 125) - MAX_OUTBOUND_CONNECTIONS)
+    {
+        {
+            LOCK(cs_setservAddNodeAddresses);
+            if (!setservAddNodeAddresses.count(addr))
+                closesocket(hSocket);
+        }
+    }
+    else if (CNode::IsBanned(addr))
+    {
+        printf("connection from %s dropped (banned)\n", addr.ToString().c_str());
+        closesocket(hSocket);
+	}
+    else
+    {
+        printf("accepted connection %s\n", addr.ToString().c_str());
+        CNode* pnode = new CNode(hSocket, addr, "", true);
+        pnode->AddRef();
+        {
+            LOCK(cs_vNodes);
+            vNodes.push_back(pnode);
+            ++nI2PNodeCount;
+        }
+    }
 }
 
 int CNetMessage::readHeader(const char *pch, unsigned int nBytes)
@@ -1077,6 +1196,7 @@ static list<CNode*> vNodesDisconnected;
 void ThreadSocketHandler()
 {
     unsigned int nPrevNodeCount = 0;
+    int nPrevI2PNodeCount = 0;
     loop
     {
         //
@@ -1105,6 +1225,8 @@ void ThreadSocketHandler()
                     if (pnode->fNetworkNode || pnode->fInbound)
                         pnode->Release();
                     vNodesDisconnected.push_back(pnode);
+                    if (pnode->addr.IsNativeI2P())
+                        --nI2PNodeCount;
                 }
             }
 
@@ -1142,7 +1264,11 @@ void ThreadSocketHandler()
             nPrevNodeCount = vNodes.size();
             uiInterface.NotifyNumConnectionsChanged(vNodes.size());
         }
-
+        if (nPrevI2PNodeCount != nI2PNodeCount)
+        {
+            nPrevI2PNodeCount = nI2PNodeCount;
+            uiInterface.NotifyNumI2PConnectionsChanged(nI2PNodeCount);
+        }
 
         //
         // Find which sockets have data to receive
@@ -1159,6 +1285,15 @@ void ThreadSocketHandler()
         FD_ZERO(&fdsetError);
         SOCKET hSocketMax = 0;
         bool have_fds = false;
+
+        BOOST_FOREACH(SOCKET hI2PListenSocket, vhI2PListenSocket) {
+            if (hI2PListenSocket != INVALID_SOCKET)
+            {
+                FD_SET(hI2PListenSocket, &fdsetRecv);
+                hSocketMax = max(hSocketMax, hI2PListenSocket);
+                have_fds = true;
+            }
+        }
 
         BOOST_FOREACH(SOCKET hListenSocket, vhListenSocket) {
             FD_SET(hListenSocket, &fdsetRecv);
@@ -1229,6 +1364,7 @@ void ThreadSocketHandler()
         //
         // Accept new connections
         //
+        if (!IsI2POnly())
         BOOST_FOREACH(SOCKET hListenSocket, vhListenSocket)
         if (hListenSocket != INVALID_SOCKET && FD_ISSET(hListenSocket, &fdsetRecv))
         {
@@ -1300,6 +1436,71 @@ void ThreadSocketHandler()
             }
         }
 
+        //
+        // Accept new I2P connections
+        //
+        {
+            bool haveInvalids = false;
+            for (std::vector<SOCKET>::iterator it = vhI2PListenSocket.begin(); it != vhI2PListenSocket.end(); ++it)
+            {
+                SOCKET& hI2PListenSocket = *it;
+                if (hI2PListenSocket == INVALID_SOCKET)
+                {
+                    if (haveInvalids)
+                        it = vhI2PListenSocket.erase(it) - 1;
+                    else
+                        BindListenNativeI2P(hI2PListenSocket);
+                    haveInvalids = true;
+                }
+                else if (FD_ISSET(hI2PListenSocket, &fdsetRecv))
+                {
+                    const size_t bufSize = NATIVE_I2P_DESTINATION_SIZE + 1;
+                    char pchBuf[bufSize];
+                    memset(pchBuf, 0, bufSize);
+                    int nBytes = recv(hI2PListenSocket, pchBuf, sizeof(pchBuf), MSG_DONTWAIT);
+                    if (nBytes > 0)
+                    {
+                        if (nBytes == NATIVE_I2P_DESTINATION_SIZE + 1) // we're waiting for dest-hash + '\n' symbol
+                        {
+                            std::string incomingAddr(pchBuf, pchBuf + NATIVE_I2P_DESTINATION_SIZE);
+                            CAddress addr;
+                            if (addr.SetSpecial(incomingAddr) && addr.IsNativeI2P())
+                            {
+                                AddIncomingConnection(hI2PListenSocket, addr);
+                            }
+                            else
+                            {
+                                printf("Invalid incoming destination hash received (%s)\n", incomingAddr.c_str());
+                                closesocket(hI2PListenSocket);
+                            }
+                        }
+                        else
+                        {
+                            printf("Invalid incoming destination hash size received (%d)\n", nBytes);
+                            closesocket(hI2PListenSocket);
+                        }
+                    }
+                    else if (nBytes == 0)
+                    {
+                        // socket closed gracefully
+                        printf("I2P listen socket closed\n");
+                        closesocket(hI2PListenSocket);
+                    }
+                    else if (nBytes < 0)
+                    {
+                        // error
+                        const int nErr = WSAGetLastError();
+                        if (nErr == WSAEWOULDBLOCK || nErr == WSAEMSGSIZE || nErr == WSAEINTR || nErr == WSAEINPROGRESS)
+                            continue;
+
+                        printf("I2P listen socket recv error %d\n", nErr);
+                        closesocket(hI2PListenSocket);
+                    }
+                    hI2PListenSocket = INVALID_SOCKET;  // we've saved this socket in a CNode or closed it, so we can safety reset it anyway
+                    BindListenNativeI2P(hI2PListenSocket);
+                }
+            }
+        }
 
         //
         // Service each socket
@@ -1521,13 +1722,15 @@ void MapPort(bool)
 }
 #endif
 
-
-
-
-
-
-
-
+static const char *strI2PDNSSeed[][2] = {
+    {"d46o5wddsdrvg2ywnu4o57zeloayt7oyg56adz63xukordgfommq.b32.i2p","d46o5wddsdrvg2ywnu4o57zeloayt7oyg56adz63xukordgfommq.b32.i2p"},
+    {"u2om3hgjpghqfi7yid75xdmvzlgjybstzp6mtmaxse4aztm23rwq.b32.i2p", "u2om3hgjpghqfi7yid75xdmvzlgjybstzp6mtmaxse4aztm23rwq.b32.i2p"},
+    {"htigbyeisbqizn63ftqw7ggfwfeolwkb3zfxwmyffygbilwqsswq.b32.i2p", "htigbyeisbqizn63ftqw7ggfwfeolwkb3zfxwmyffygbilwqsswq.b32.i2p"},
+    {"st4eyxcp73zzbpatgt26pt3rlfwb7g5ywedol65baalgpnhvzqpa.b32.i2p", "st4eyxcp73zzbpatgt26pt3rlfwb7g5ywedol65baalgpnhvzqpa.b32.i2p"},
+    {"qgmxpnpujddsd5ez67p4ognqsvo64tnzdbzesezdbtb3atyoxcpq.b32.i2p", "qgmxpnpujddsd5ez67p4ognqsvo64tnzdbzesezdbtb3atyoxcpq.b32.i2p"},
+    {"a4gii55rnvv22qm2ojre2n67bzms5utr4k3ckafwjdoym2cqmv2q.b32.i2p", "a4gii55rnvv22qm2ojre2n67bzms5utr4k3ckafwjdoym2cqmv2q.b32.i2p"}, // K1773R's seednode
+    {"qc37luxnbh3hkihxfl2e7nwosebh5sbfvpvjqwn7c3g5kqftb5qq.b32.i2p", "qc37luxnbh3hkihxfl2e7nwosebh5sbfvpvjqwn7c3g5kqftb5qq.b32.i2p"} // psi's seednode
+};
 
 // DNS seeds
 // Each pair gives a source name and a seed name.
@@ -1553,6 +1756,23 @@ static const char *strTestNetDNSSeed[][6] = {
 	{NULL, NULL}
 };
 
+/*void WriteAddrMan(const CAddrMan& addr)
+{
+    CAddrDB adb;
+    adb.Write(addr);
+}*/
+void DumpAddresses()
+{
+    int64 nStart = GetTimeMillis();
+
+    CAddrDB adb;
+    adb.Write(addrman);
+	//WriteAddrMan(addrman);
+
+    printf("Flushed %d addresses to peers.dat  %"PRI64d"ms\n",
+           addrman.size(), GetTimeMillis() - nStart);
+}
+
 void ThreadDNSAddressSeed()
 {
     static const char *(*strDNSSeed)[6] = fTestNet ? strTestNetDNSSeed : strMainNetDNSSeed;
@@ -1561,6 +1781,31 @@ void ThreadDNSAddressSeed()
 
     printf("Loading addresses from DNS seeds (could take a while)\n");
 
+    if (IsI2PEnabled()) {
+        for (unsigned int seed_idx = 0; seed_idx < ARRAYLEN(strI2PDNSSeed); seed_idx++) {
+            if (HaveNameProxy()) {
+                AddOneShot(strI2PDNSSeed[seed_idx][1]);
+            } else {
+                vector<CNetAddr> vaddr;
+                vector<CAddress> vAdd;
+                if (LookupHost(strI2PDNSSeed[seed_idx][1], vaddr)) {
+                    BOOST_FOREACH(CNetAddr& ip, vaddr) {
+                        int nOneDay = 24*3600;
+                        CAddress addr = CAddress(CService(ip, GetDefaultPort()));
+                        addr.nTime = GetTime() - 3*nOneDay - GetRand(4*nOneDay); // use a random age between 3 and 7 days old
+                        vAdd.push_back(addr);
+                        found++;
+                    }
+                }
+                addrman.Add(vAdd, CNetAddr(strI2PDNSSeed[seed_idx][0], true));
+            }
+        }
+        // Prefer I2P, if 4 is found, drop the clearnet dnsseed
+        if (found>4)
+            return;
+    }
+
+    if (!IsI2POnly())
     for (unsigned int seed_idx = 0; strDNSSeed[seed_idx][0] != NULL; seed_idx++) {
         if (HaveNameProxy()) {
             AddOneShot(strDNSSeed[seed_idx][1]);
@@ -1581,14 +1826,14 @@ void ThreadDNSAddressSeed()
             addrman.Add(vAdd, CNetAddr(strDNSSeed[seed_idx][0], true));
         }
     }
-
     printf("%d addresses found from DNS seeds\n", found);
 }
 
-
-
-
-
+void ThreadDNSAddressSeed2(void* parg)
+{
+	ThreadDNSAddressSeed();
+	DumpAddresses();
+}
 
 
 
@@ -1598,93 +1843,13 @@ void ThreadDNSAddressSeed()
 
 unsigned int pnSeed[] =
 {
-    0x6ab5368e, 0x63109859, 0x6c47bb25, 0x87d888c1, 0x1d9b2e48, 0x63a6c545, 0xf3ca1a48, 0x23b6b242,
-    0x8a67c7c6, 0x70a6f1c0, 0xc585c96d, 0x5cc4fd36, 0x239be836, 0x6660dc36, 0x2664cb36, 0xa602cd36,
-    0xb83dfc36, 0x70a2fe18, 0x2c589d55, 0xf969ec2e, 0x702ab643, 0x6a97e655, 0xad9751ce, 0x57e5025a,
-    0x9d065643, 0xe7b5ff60, 0x959d0d5a, 0x9667a318, 0xeba0c118, 0xb380d418, 0x170ccdde, 0x3548d9a2,
-    0x3261ff53, 0x42df0676, 0x9d7445ae, 0x1db3e953, 0xafc0b1b7, 0x1648934b, 0x535ee644, 0x4b89b64f,
-    0x56ed3060, 0x0810a15f, 0x03590ccf, 0x80752452, 0x0cc87162, 0xfec159d5, 0xcf0df618, 0x48865456,
-    0xdec8e55a, 0x91e6ee5b, 0xc4739518, 0x24d45453, 0xd5e5be44, 0xdafcff57, 0x0e73ca18, 0x83c4d148,
-    0x5a51ee53, 0x367e1c56, 0x2d651f54, 0x5eb4be43, 0x621589b2, 0x81dddedd, 0xd7499f56, 0xa48a694c,
-    0xd408c762, 0x88d36144, 0x6891772e, 0x38e89c73, 0x8ce3a856, 0x52fa1fb0, 0xd9d5796d, 0x27318945,
-    0x2e680452, 0x619bc445, 0xd0dc092e, 0x7192c962, 0xc2c9e405, 0xb9e3e747, 0xe459c9c1, 0x9d043b25,
-    0xe2b235c6, 0xed2dcf18, 0xb3d03cae, 0x3d2dafb8, 0xd46a0e45, 0x4a32f1d8, 0x350be560, 0xab0a648a,
-    0x87b6bc43, 0x6745629b, 0x72b9c362, 0x03a91c05, 0x7320bd3b, 0x32920b18, 0xbc2ca162, 0x216c4f7d,
-    0x64151a4e, 0x4b63e20c, 0xe703c3be, 0xc2d5fab2, 0x2b28b762, 0xde47b0ba, 0xf2e19dd9, 0x99044fad,
-    0x8252a5c0, 0x6e8be597, 0x4f0bb56c, 0xfaa52252, 0x8f764b52, 0xe5b21cad, 0x020cab4d, 0xc8e8f763,
-    0x2eaacc6d, 0x2ce4dd4e, 0xfe27345c, 0xb21f09b0, 0x8b4199d9, 0x6b53c248, 0x42a8966d, 0xd5387145,
-    0xc091c257, 0x2fe06751, 0xecf66552, 0x37dd0418, 0x8073c57c, 0x5471d54e, 0x56953360, 0x0d1ffcdf,
-    0xb4554318, 0x16cb54c6, 0xa064d05e, 0x2b0fa93a, 0xec26d162, 0x9ca91b42, 0xdcfa4457, 0x1b5c0a7a,
-    0x4561a17c, 0xcc52a662, 0xf9d47ad9, 0xfa418cb2, 0x88085618, 0x007aa55f, 0xfa2e4d4d, 0x8516a843,
-    0x634ac658, 0x2c36f62e, 0x3f0cbe5e, 0xd0e87257, 0x37d5e6bc, 0x5941c1c7, 0x5ee001ae, 0xc2791e6c,
-    0x0c6220b2, 0xab1ba258, 0x4719c076, 0xabb6a942, 0x6e588b52, 0x101a4352, 0x9604b362, 0x16607fc7,
-    0x4a687d45, 0xc217feb2, 0xaebb6b18, 0x4439412e, 0x41330360, 0xca23946d, 0x1c699d76, 0xcd302344,
-    0x4683afad, 0xad3c644f, 0x95ab4f05, 0xb34ec562, 0x57e3ff50, 0xcb950847, 0x743ced60, 0xb6734347,
-    0x6237a2b2, 0x1517e244, 0xfd0b128b, 0xb7eb605f, 0x6a9717ad, 0x7e8d65ae, 0xdddc4cad, 0xc63530a6,
-    0xfcd78559, 0xc779e25e, 0xf683de58, 0x7cd1ff50, 0x6e0931ad, 0x7c1b46ad, 0x9f4b4252, 0xf421482e,
-    0xeca7e697, 0xfe466544, 0x46fa2240, 0xd33328bc, 0x7be6d7bd, 0xc205c27b, 0xa04c07d8, 0x5bcdb350,
-    0x847bc74a, 0x14967f45, 0x59b341ad, 0x9ce4d783, 0xc38300c0, 0x4f1b4aad, 0x018daa32, 0x95d7f854,
-    0x4bd58543, 0xfe8446ad, 0xc3288f18, 0xcda2e253, 0x662e4852, 0x9338e24e, 0xc2fd1218, 0xa7198252,
-    0x481858b8, 0x55b74374, 0xbd458d5e, 0xb2cc6d54, 0x2ca11b4e, 0x62d1be58, 0xf0637fbc, 0xd9943950,
-    0x0f6f4a47, 0x188a6144, 0x768ea0d8, 0xd2c31c54, 0x29462ed5, 0x2b546ad5, 0x8ba12d6c, 0x1a3f7255,
-    0xa836e23c, 0xdcde0552, 0xda5b3945, 0x7e3720b2, 0x8c098018, 0x42cddd50, 0x0c52a65f, 0x8cce175e,
-    0x96554242, 0x7309c779, 0xcb2537ca, 0xecfb70d9, 0x19c0b259, 0x7b559ed8, 0x2f03ae44, 0x1b2b0f05,
-    0x9e72165e, 0x4ac7413e, 0xa22cbb6a, 0x9fc7624d, 0xbb101a54, 0xfdb0c23e, 0x84a65a47, 0x1efded62,
-    0x1f47f554, 0xe5c16ad2, 0x76b62332, 0xe4613d46, 0xd74f6ec1, 0x3d0e2b32, 0x6725fe5e, 0xb62a8729,
-    0x922e9925, 0x7efc2544, 0x12af60d4, 0x5e042f44, 0x5fcaff54, 0x144a3493, 0x5788ec47, 0x729175b2,
-    0x493b316c, 0x949d4542, 0x4ffc8856, 0x18a95b61, 0xdaabc547, 0xc879d855, 0x7d8488c1, 0x3cb7b052,
-    0xbe8ade6f, 0x6ef6a555, 0x737e5247, 0x7368e252, 0x5fbe1056, 0xb848e217, 0x44a44105, 0xb7610150,
-    0x3c2eed62, 0x2b0c9e6d, 0x2a1698b4, 0x4e6fa443, 0xb6c3fe4d, 0xd86c8a43, 0x48b27125, 0x9d9c60cb,
-    0x349a6d4c, 0xae336259, 0x81d7976d, 0x8e9fe2c0, 0x5f20c2dd, 0x6f289e52, 0xe954cf51, 0xc96eb248,
-    0x1c29f562, 0xb01e3842, 0x119511b9, 0x4811856d, 0x172ff854, 0x7dab5451, 0x52520752, 0xc414ed52,
-    0x368f4105, 0x7767b047, 0x1c459f32, 0x05b5e697, 0xb5273160, 0x99eaec69, 0x0cd7a951, 0x36e1f13e,
-    0xee815148, 0x5773e8bc, 0xf61f35ad, 0xa0b903ae, 0x2d811660, 0x98aec3be, 0x851afa59, 0xce25a518,
-    0xfcaaf2a2, 0x90bde760, 0x04cb16ad, 0x70a30432, 0xa6cd3e47, 0x0ccac672, 0xb238a018, 0xf7db8156,
-    0xed1e0331, 0xe2590ccf, 0x0cde9e56, 0x5cc39744, 0x4e3c957c, 0xc57e67d3, 0x6b547662, 0x073cd243,
-    0x670d9a18, 0x4666ae58, 0x661abd59, 0x64c94732, 0x8371cc82, 0x2f460843, 0x03bcfa45, 0xa23cac70,
-    0x1fa47b46, 0xec86b4ad, 0x183e3105, 0x6dea2446, 0x0331bcd1, 0x2673cf18, 0x5ccbdaac, 0xa0483850,
-    0x9b28c34a, 0xc69b9b62, 0xac944946, 0x3723b456, 0x4a53485d, 0x365fa8bc, 0x3adfbd5e, 0xdefbb143,
-    0x6ca64746, 0xadea802e, 0x89c0bbad, 0xefcc854f, 0x38cca5bc, 0xacc61e5e, 0x5bc43ab8, 0x3003795b,
-    0x391c2352, 0xe410f6ad, 0x3fa6f957, 0xd6b095d4, 0xeb00ba43, 0xf92f174c, 0xb45c0644, 0x6b299c53,
-    0xff0cf172, 0xaafe4a4c, 0xeb4aea5c, 0xb61dae43, 0x22115347, 0xfd510e6c, 0xe037fc50, 0xa5498e3d,
-    0xd36b8118, 0x0b6a0250, 0xd3260c5e, 0xe540424b, 0xbb630732, 0xa5cca46d, 0xdbb27a47, 0x5874ba6a,
-    0x581d4342, 0xa68b7125, 0x0b3b9f58, 0x2b8a8d18, 0x3155e763, 0x455e6951, 0xe79c0260, 0x683a474b,
-    0xfcabe697, 0xf3d1e13c, 0x8c0eb57c, 0x34a9e155, 0xc51d1e4c, 0x26fc8748, 0x3817ba6a, 0xbc36225f,
-    0x8dc42e5a, 0x51676c4e, 0x0f77a843, 0xf45ebebc, 0x2dc05874, 0x9be1ac5f, 0x1471595c, 0xa6d260d8,
-    0x3e2a008e, 0x0a2ff462, 0xfbe632c6, 0xf701af5d, 0x6cca155c, 0xf2e2af51, 0xb5c47a47, 0x322968d5,
-    0xfe651b4e, 0x11bccecd, 0xc2140418, 0xa741a465, 0xc8f45f48, 0x0400b0b4, 0x0e36c14e, 0x1f028cb2,
-    0x221db552, 0x4876ced5, 0x8e7c4abc, 0xd4b4734c, 0xce4b79d9, 0xf2879056, 0xa761794d, 0xc89c96b2,
-    0xd042af44, 0xd5f63418, 0x744731ad, 0xa94e7cae, 0x52b85b4d, 0x01978932, 0xa6abd1d3, 0xd4fae247,
-    0x71cd9344, 0xde60bb6a, 0xec358489, 0x6e054cdc, 0xc92728bc, 0x231ea8bc, 0x74a5a2bc, 0x6d6f135d,
-    0x26dd6596, 0x9d5386d1, 0x268bf232, 0x3867324a, 0x315e5353, 0x1ed2a443, 0xd79a9d51, 0x39dfe550,
-    0x3f1ef181, 0x2f65fe79, 0xf6caf04d, 0x3fd33644, 0xd9abf043, 0x1a84c94e, 0x61618445, 0x7bd81318,
-    0xb4f8764c, 0x8c6ae963, 0x7d659c5c, 0x9f294257, 0x5711be58, 0x3ac6b247, 0xe4f07d60, 0xe6bf7162,
-    0x96742752, 0x23329cca, 0xc219cd5c, 0xa6f23418, 0xf4908053, 0x63130652, 0xf68fc948, 0x028fb54b,
-    0x83ec1a18, 0xe88b4e8b, 0xf057ffcf, 0x4b3efe60, 0x359fff60, 0xba675642, 0xd5fe664c, 0xc8a2b862,
-    0x4f8f576d, 0xb7827462, 0x1cc0c954, 0x6655aa7c, 0x9bc71451, 0x1039b456, 0x91d5e37c, 0x1ccb6c53,
-    0x2e36313e, 0x6afd5251, 0xee91107c, 0xe9c0844b, 0xf133e347, 0xc1cd1b41, 0x3a0ab052, 0x30dee25a,
-    0xa75bd152, 0x319da1b8, 0xd8f97561, 0x2fa794d5, 0x92a70d6c, 0xd6b470d5, 0xb524c90e, 0x109a64ae,
-    0x7038af89, 0x3205e418, 0x313a015e, 0xd2d3175e, 0xc07593b8, 0x179ee97a, 0x78fdec47, 0x775d6d3a,
-    0xccc93a40, 0xdbbbd9ad, 0x803c6f12, 0xfd4bc14a, 0x8ed15250, 0x19c65958, 0xc8300c5e, 0x87757db2,
-    0x82fe0444, 0x3ce0035e, 0x19f0e762, 0x160c4c57, 0x069b0418, 0x9c6e4356, 0xa10df12e, 0x1936654d,
-    0xd30b2848, 0x464aa5b2, 0xbb0b1b55, 0x03f3d318, 0x0431e06c, 0x0d94f15b, 0xabc2ed47, 0xf23a00c2,
-    0x3bee4954, 0xd1e72a52, 0xd464d054, 0xcf141118, 0xf57f4bc8, 0xd8b1ac6c, 0x136ea959, 0x63275d4a,
-    0x391e8c18, 0xd4dd4832, 0x96610b6d, 0x9cfb5153, 0x4a80ee48, 0x345e7cbc, 0xde810b59, 0x134a4c90,
-    0x4544ed5e, 0xdc801956, 0x9d6b3ac6, 0x0a037786, 0xdcaafd62, 0xd65ee05a, 0x158b754c, 0x53427dd5,
-    0xa32774bc, 0xa22af3a2, 0x0c1f7157, 0xa0b58429, 0x349f3156, 0x9cd6a34d, 0x67eb1c56, 0x20b5e597,
-    0xd40f7162, 0xa4cb0379, 0x0e1efc53, 0xe5c8e554, 0x3ebf8052, 0x6ee00847, 0x99206883, 0xc851767d
+    0x0
 };
 
-void DumpAddresses()
-{
-    int64 nStart = GetTimeMillis();
-
-    CAddrDB adb;
-    adb.Write(addrman);
-
-    printf("Flushed %d addresses to peers.dat  %"PRI64d"ms\n",
-           addrman.size(), GetTimeMillis() - nStart);
-}
+const std::string pstrI2PSeed[] = {
+    "8w-NRnXaxoGZdyupTXX78~CmF8csc~RhJr8XR2vMbNpazKhGjWNfRjhCmwqXkkW9vwkNjovW2AAbof7PfVnMCff0sHSxMTiBNsH8cuHJS2ckBSJI3h4G4ffJLc5gflangrG1raHKrMXCw8Cn56pisx4RKokEKUYdeEPiMdyJUO5yjZW2oyk4NpaUaQCqFmcglIvNOCYzVe~LK124wjJQAJc5iME1Sg9sOHaGMPL5N2qkAm5osOg2S7cZNRdIkoNOq-ztxghrv5bDL0ybeC0sfIQzvxDiKugCrSHEHCvwkA~xOu9nhNlUvoPDyCRRi~ImeomdNoqke28di~h2JF7wBGE~3ACxxOMaa0I~c9LV3O7pRU2Xj9HDn76eMGL7YCcCU4dRByu97oqfB3E~qqmmFp8W1tgvnEAMtXFTFZPYc33ZaCaIJQD7UXcQRSRV7vjw39jhx49XFsmYV3K6~D8bN8U4sRJnKQpzOJGpOSEJWh88bII0XuA55bJsfrR4VEQ5AAAA",
+    "hL51K8bxVvqX2Z4epXReUYlWTNUAK-1XdlbBd7e796s2A3icCQRhJvGlaa6PX~tgPvos-2IJp9hFQrVa0lyKyYmpQN9X7GOErtsL-JbMQpglQsEd94jDRAsiBuvgyPZij~NNdBxKRMDvNm9s7eovzhEFTAimTSB-sgeZ4Afxx2IrNXDFM6KS8AUm8YsaMldzX9zKQDeuV0slp4ZfIAVQhZZy9zTZSmUNPnXQR7XPh5w7FkXzmKMTKSyG~layJ3AorQWqzZXmykzf4z3CE4zkzQcwc0~ZIcAg9tYvM2AdQIdgeN6ISMim6L8q6ku6abuONkyw-NJTi3NopeGHZva21Tc3uHetsKoW434N24HBVUtIjJVjGsbZ7xBfz2xM5kyhPl6SlD-RJarCw47Rovmfc9Piq6q3S~Zw-rvRl-xDMJzwraIYNjAROouDwjI9Bqnguq9DH5uFBxf4uN69X7T~yWTAjdvelZKp6BGe~HGo7bNQjBmymhlH4erCKZEXOaxDAAAA"
+};
 
 void static ProcessOneShot()
 {
@@ -1727,12 +1892,9 @@ void ThreadOpenConnections()
 
     // Initiate network connections
     int64 nStart = GetTime();
-	int64 nTm, nStart2 = nStart;
-	int nBestHeight2 = nBestHeight;
-	bool bCheckCon = GetBoolArg("-bcheckconnect", false);
     loop
     {
-        ProcessOneShot();
+		ProcessOneShot();
 
         MilliSleep(500);
 
@@ -1756,44 +1918,16 @@ void ThreadOpenConnections()
                 addr.nTime = GetTime()-GetRand(nOneWeek)-nOneWeek;
                 vAdd.push_back(addr);
             }
+            for (size_t i = 0; i < ARRAYLEN(pstrI2PSeed); i++)
+            {
+                const int64 nOneWeek = 7*24*60*60;
+                CAddress addr(CService((const std::string&)pstrI2PSeed[i]));
+                addr.nTime = GetTime()-GetRand(nOneWeek)-nOneWeek;
+                vAdd.push_back(addr);
+            }
             addrman.Add(vAdd, CNetAddr("127.0.0.1"));
         }
 		
-		if( bCheckCon )
-		{
-			nTm = GetTime();
-
-			if( (nTm - nStart2) > 360 )
-			{
-				GetMyExternalIP3();
-				{
-					LOCK(cs_vNodes);
-					BOOST_FOREACH(CNode* pnode, vNodes)
-					{
-						try
-						{
-							uint64 nonce = 0; 
-							pnode->PushMessage("ping", nonce);
-							/*if( nBestHeight2 >= nBestHeight )
-							{
-								printf("CheckCon: [%s]\n", pnode->addrName.c_str());
-								pnode->CloseSocketDisconnect();
-							}
-							else */
-							if( pnode->nStartingHeight == -1 )
-							{
-								pnode->CloseSocketDisconnect();
-							}
-						}catch(std::exception &e) 
-						{
-
-						}						
-					}
-				}
-				nBestHeight2 = nBestHeight;
-				nStart2 = GetTime();
-			}
-		}
         //
         // Choose an address to connect to based on most recently seen
         //
@@ -1840,7 +1974,7 @@ void ThreadOpenConnections()
                 continue;
 
             // do not allow non-default ports, unless after 50 invalid addresses selected already
-            if (addr.GetPort() != GetDefaultPort() && nTries < 50)
+            if (!addr.IsNativeI2P() && addr.GetPort() != GetDefaultPort() && nTries < 50)
                 continue;
 
             addrConnect = addr;
@@ -2063,10 +2197,25 @@ void ThreadMessageHandler()
     }
 }
 
+bool BindListenNativeI2P()
+{
+    SOCKET hNewI2PListenSocket = INVALID_SOCKET;
+    if (!BindListenNativeI2P(hNewI2PListenSocket))
+        return false;
+    vhI2PListenSocket.push_back(hNewI2PListenSocket);
+    return true;
+}
 
-
-
-
+bool BindListenNativeI2P(SOCKET& hSocket)
+{
+    hSocket = I2PSession::Instance().accept(false);
+    if (!SetSocketOptions(hSocket) || hSocket == INVALID_SOCKET)
+        return false;
+    CService addrBind(I2PSession::Instance().getMyDestination().pub, 0);
+    if (addrBind.IsRoutable() && fDiscover)
+        AddLocal(addrBind, LOCAL_BIND);
+    return true;
+}
 
 bool BindListenPort(const CService &addrBind, string& strError)
 {
@@ -2223,9 +2372,150 @@ void static Discover()
         NewThread(ThreadGetMyExternalIP, NULL);
 }
 
+boost::thread* tThreadDNSAddressSeed=NULL;
+boost::thread* tThreadSocketHandler=NULL;
+boost::thread* tThreadOpenAddedConnections=NULL;
+boost::thread* tThreadOpenConnections=NULL;
+boost::thread* tThreadMessageHandler=NULL;
+boost::thread* tDumpAddresses=NULL;
+int iAutoReStartNet_begin = 0, iSynNodeStart=0;
+boost::thread_group *MythreadGroup = NULL;
+
+void RestartNets()
+{
+	try{
+						if( tThreadDNSAddressSeed ){
+							MythreadGroup->remove_thread(tThreadDNSAddressSeed);
+							tThreadDNSAddressSeed->interrupt();
+							tThreadDNSAddressSeed = NULL;
+						}
+						if( tThreadSocketHandler ){
+							MythreadGroup->remove_thread(tThreadSocketHandler);
+							tThreadSocketHandler->interrupt();
+							tThreadSocketHandler = NULL;
+						}
+						if( tThreadOpenAddedConnections ){
+							MythreadGroup->remove_thread(tThreadOpenAddedConnections);
+							tThreadOpenAddedConnections->interrupt();
+							tThreadOpenAddedConnections = NULL;
+						}
+						if( tThreadOpenConnections ){
+							MythreadGroup->remove_thread(tThreadOpenConnections);
+							tThreadOpenConnections->interrupt();
+							tThreadOpenConnections = NULL;
+						}
+						if( tThreadMessageHandler ){
+							MythreadGroup->remove_thread(tThreadMessageHandler);
+							tThreadMessageHandler->interrupt();
+							tThreadMessageHandler = NULL;
+						}
+						if( tDumpAddresses ){
+							MythreadGroup->remove_thread(tDumpAddresses);
+							tDumpAddresses->interrupt();
+							tDumpAddresses = NULL;
+						}
+						StopNode();
+						MilliSleep(100);
+						StartNode( * MythreadGroup );
+	}catch(std::exception &e) {
+		printf("RestartNets: err[%s]\n", e.what());
+	}
+}
+
+int iStep=0;
+void AutoReStartNet()
+{
+	iAutoReStartNet_begin = 1;
+    int64 aStart = GetTimeMillis();
+	int64 nTm=0, nFastmTm = 0;
+	int aBestHeight2 = nBestHeight;
+	int iRestTic1 = GetArg("-restnodetime", 720);	// 720 / 60 = 12 fz
+	int64 iRestTic = iRestTic1 * 1000;
+	while (true)
+	{
+		iStep = 0;
+		try
+		{
+			int dMinerThreads2;
+			MilliSleep(200);
+			nTm = GetTimeMillis();
+			
+			iStep = 2;		
+			if( nTm > aStart )
+			{
+				iStep = 3;
+				int b = 0;
+				if( (nTm - aStart) > iRestTic )	// 720 = 12 fz
+				{
+					iStep = 4;
+					if( (aBestHeight2 >= nBestHeight) || ((nTm - aStart) > (iRestTic + (30 * 1000))) )
+					{
+						b++;
+						iStep = 5;
+						dMinerThreads2 = dMinerThreads;
+						//iStep = 6;
+						RestartNets();
+						//iStep = 7;
+						iStep = 8;
+						if( dMinerThreads2 )
+						{
+							mapArgs["-genproclimit"] = itostr(dMinerThreads2); 
+							GenerateBitcoins(true, pwalletMain);
+						}
+						iStep = 9;
+						if( fDebug ){ printf("AutoReStartNet Node done\n"); }
+					}
+					iStep = 10;
+					aBestHeight2 = nBestHeight;
+					iStep = 11;
+					aStart = GetTimeMillis();	//GetTime();
+					iStep = 12;
+				}
+				if( b && fDebug ){ printf("AutoReStartNet: nBestHeight=[%u] [%u], %"PRI64d"-%"PRI64d" = %"PRI64d", iStep=%u\n", nBestHeight, aBestHeight2, nTm, aStart, (nTm - aStart), iStep); }
+			}			
+		}catch(std::exception &e) {
+			printf("AutoReStartNet: err[%s]\n", e.what());
+		}
+	}
+	iAutoReStartNet_begin = 0;
+}
+
+void MySynNodesFunc()
+{
+	iSynNodeStart++;
+    int64 nStart = GetTime();
+	int64 nTm;
+	int iSynTic = GetArg("-synodetime", 720);	// 720 / 60 = 12 fz
+	while (true)
+	{
+		try
+		{
+			MilliSleep(200);
+			nTm = GetTime();
+			if( nTm > nStart )
+			{
+				if( (nTm - nStart) > iSynTic )
+				{
+					if(fDebug){ printf("MySynNodesFunc time in, iStep=%u\n", iStep); }
+					GetMyExternalIP3();
+					nStart = GetTime();
+					if(fDebug){ printf("MySynNodesFunc done, iStep=%u\n", iStep); }
+				}
+			}
+		}catch(std::exception &e) {
+			printf("MySynNodesFunc: err[%s]\n", e.what());
+		}
+	}
+}
+
+int bMapPort=0;
 void StartNode(boost::thread_group& threadGroup)
 {
-    if (semOutbound == NULL) {
+    std::string sAcc="";
+	MythreadGroup = &threadGroup;
+	bSyncNodes = GetBoolArg("-bsyncnodes", true);
+	
+	if (semOutbound == NULL) {
         // initialize semaphore
         int nMaxOutbound = min(MAX_OUTBOUND_CONNECTIONS, nMaxConnections);
         semOutbound = new CSemaphore(nMaxOutbound);
@@ -2243,27 +2533,44 @@ void StartNode(boost::thread_group& threadGroup)
     if (!GetBoolArg("-dnsseed", true))
         printf("DNS seeding disabled\n");
     else
-        threadGroup.create_thread(boost::bind(&TraceThread<boost::function<void()> >, "dnsseed", &ThreadDNSAddressSeed));
+        tThreadDNSAddressSeed = threadGroup.create_thread(boost::bind(&TraceThread<boost::function<void()> >, "dnsseed", &ThreadDNSAddressSeed));
 
 #ifdef USE_UPNP
     // Map ports with UPnP
-    MapPort(GetBoolArg("-upnp", USE_UPNP));
+    if( bMapPort == 0 )
+	{
+		MapPort(GetBoolArg("-upnp", USE_UPNP));
+		bMapPort++;
+	}
 #endif
 
+    // Get addresses from IRC and advertise ours
+    //if (!IsI2POnly())
+    //    threadGroup.create_thread(boost::bind(&TraceThread<void (*)()>, "irc", &ThreadIRCSeed));
+
     // Send and receive from sockets, accept connections
-    threadGroup.create_thread(boost::bind(&TraceThread<void (*)()>, "net", &ThreadSocketHandler));
+    tThreadSocketHandler = threadGroup.create_thread(boost::bind(&TraceThread<void (*)()>, "net", &ThreadSocketHandler));
 
     // Initiate outbound connections from -addnode
-    threadGroup.create_thread(boost::bind(&TraceThread<void (*)()>, "addcon", &ThreadOpenAddedConnections));
+    tThreadOpenAddedConnections = threadGroup.create_thread(boost::bind(&TraceThread<void (*)()>, "addcon", &ThreadOpenAddedConnections));
 
     // Initiate outbound connections
-    threadGroup.create_thread(boost::bind(&TraceThread<void (*)()>, "opencon", &ThreadOpenConnections));
+    tThreadOpenConnections = threadGroup.create_thread(boost::bind(&TraceThread<void (*)()>, "opencon", &ThreadOpenConnections));
 
     // Process messages
-    threadGroup.create_thread(boost::bind(&TraceThread<void (*)()>, "msghand", &ThreadMessageHandler));
-
+    tThreadMessageHandler = threadGroup.create_thread(boost::bind(&TraceThread<void (*)()>, "msghand", &ThreadMessageHandler));
+	
     // Dump network addresses
-    threadGroup.create_thread(boost::bind(&LoopForever<void (*)()>, "dumpaddr", &DumpAddresses, DUMP_ADDRESSES_INTERVAL * 1000));
+    tDumpAddresses = threadGroup.create_thread(boost::bind(&LoopForever<void (*)()>, "dumpaddr", &DumpAddresses, DUMP_ADDRESSES_INTERVAL * 1000));
+
+	if( iAutoReStartNet_begin == 0 )
+	{
+		//NewThread(AutoReStartNet, NULL);
+		threadGroup.create_thread(boost::bind(&TraceThread<void (*)()>, "autorestnet", &AutoReStartNet));
+	}
+	if( (bSyncNodes) && (iSynNodeStart == 0) ){
+		threadGroup.create_thread(boost::bind(&TraceThread<void (*)()>, "synodes", &MySynNodesFunc));
+	}
 }
 
 bool StopNode()
@@ -2297,6 +2604,11 @@ public:
             if (hListenSocket != INVALID_SOCKET)
                 if (closesocket(hListenSocket) == SOCKET_ERROR)
                     printf("closesocket(hListenSocket) failed with error %d\n", WSAGetLastError());
+
+        BOOST_FOREACH(SOCKET& hI2PListenSocket, vhI2PListenSocket)
+            if (hI2PListenSocket != INVALID_SOCKET)
+                if (closesocket(hI2PListenSocket) == SOCKET_ERROR)
+                    printf("closesocket(hI2PListenSocket) failed with error %d\n", WSAGetLastError());
 
         // clean up some globals (to help leak detection)
         BOOST_FOREACH(CNode *pnode, vNodes)
@@ -2400,4 +2712,52 @@ void RelayTransaction2(const CMerkleTx& tx, const uint256& hash, const CDataStre
         } else
             pnode->PushInventory(inv);
     }
+}
+
+int ClearNodes(int iConnectToSeedNodes)
+{
+	int rzt=0;
+	if( fDebug ) printf("ClearNodes begin\n");
+    
+	//-- Clear peers.dat
+	CAddrDB adb;
+	CAddrMan addr2;
+	//DumpAddresses();
+	adb.Write(addr2);    
+    if (!adb.Read(addrman))
+        if( fDebug ) printf("Invalid or missing peers.dat; recreating\n");
+	if( fDebug ) printf("ClearNodes clear peers.dat\n");
+	
+	try{
+		rzt = vNodes.size();
+		RestartNets();
+		/*
+		LOCK(cs_vNodes);
+		BOOST_FOREACH(CNode* pnode, vNodes)
+		{
+			if (pnode->fSuccessfullyConnected)
+			{
+				pnode->CloseSocketDisconnect();
+				rzt++;
+			}
+		}*/
+	}catch(std::exception &e) 
+	{
+		printf("ClearNodes: err[%s]\n", e.what());
+	}
+	if( fDebug ) printf("ClearNodes close %u nodes\n", rzt);
+
+	
+	if( iConnectToSeedNodes )
+	{
+		try{
+			NewThread(ThreadDNSAddressSeed2, NULL);
+			//if( tThreadDNSAddressSeed == NULL ){ ThreadDNSAddressSeed(); }
+		}catch(std::exception &e) 
+		{
+			printf("ClearNodes ThreadDNSAddressSeed: err[%s]\n", e.what());
+		}
+	}
+	if( fDebug ) printf("ClearNodes end %u\n", rzt);
+	return rzt;
 }

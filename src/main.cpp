@@ -9,6 +9,7 @@
 #include "txdb.h"
 #include "net.h"
 #include "init.h"
+#include "rpcwallet.h"
 #include "ui_interface.h"
 #include "checkqueue.h"
 #include <boost/algorithm/string/replace.hpp>
@@ -1258,7 +1259,7 @@ int64 static GetBlockValue(int nHeight, int64 nFees)
 	else{
 
     // Subsidy is cut in half every 840000 blocks, which will occur approximately every 4 years
-    nSubsidy >>= (nHeight / 120000); // Litecoin: 840k blocks in ~4 years
+    nSubsidy >>= (nHeight / 120000); // Hotcoin: 120k blocks in ~10 years
     }
     return nSubsidy + nFees;
 }
@@ -1482,7 +1483,7 @@ bool ConnectBestBlock(CValidationState &state) {
 
  void CBlockHeader::UpdateTime(const CBlockIndex* pindexPrev)
 {
-	nTime = GetAdjustedTime();
+	nTime = GetTime();
 	
     // Updating time can change work required on testnet:
     if (fTestNet)
@@ -2541,10 +2542,14 @@ int prevBlockIsForFast(const CBlockIndex* pbIndex, const CBlock* curBlock, int n
 					iFind = 1;
 					if( cT > bT )
 					{
-						unsigned int iTb = cT - bT;
-						if( (iTb >= 120) && (iTb <= 480) )
+						unsigned int iTb = cT - bT;					
+						if( iTb >= 120 )
 						{
+							if( pbIndex->nHeight >= 140000 )
+							{
 								rzt++;
+							}
+							else if( iTb <= 480 ){ rzt++; }
 						}
 					}
 					break;
@@ -2641,6 +2646,13 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 				}
 				
 				bool bCheck60And4321Blocks = true;	// 2014.05.07 add
+				
+				int iDontCheckNhous = GetArg("-dontchecknhoursbob", 24);	//Don't check for n hours before of blocks
+				if( (stm > nTime) && ((stm - nTime) >= (60 * 60 * iDontCheckNhous)) )	// 2014.6.30 add
+				{
+					bCheck60And4321Blocks = false;
+				}
+				
 				if( nTime > pindexPrev->nTime )
 				{
 					int iPrevIs4Fast = 0;
@@ -2723,7 +2735,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 
         // Check that the block chain matches the known block chain up to a checkpoint
         if (!Checkpoints::CheckBlock(state, nHeight, hash))
-			return state.DoS(100, error("AcceptBlock() : rejected by checkpoint lock-in at %d", nHeight));
+            return state.DoS(100, error("AcceptBlock() : rejected by checkpoint lock-in at %d", nHeight));
 
         // Don't accept any forks from the main chain prior to last checkpoint
         CBlockIndex* pcheckpoint = Checkpoints::GetLastCheckpoint(mapBlockIndex);
@@ -3790,14 +3802,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             return false;
         }
 
-        int64 nTime, aTime, ngT2;
+        int64 nTime;
         CAddress addrMe;
         CAddress addrFrom;
         uint64 nNonce = 1;
-		unsigned int vDevnub = 0;
-		unsigned int vConnetSrv = 0;
-		ngT2  = 0;
-		aTime = 0;
 		
 		vRecv >> pfrom->nVersion >> pfrom->nServices >> nTime >> addrMe;
         if (pfrom->nVersion < MIN_PEER_PROTO_VERSION)
@@ -3815,70 +3823,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         if (!vRecv.empty()) {
             vRecv >> pfrom->strSubVer;
 
-			if( !pfrom->strSubVer.empty() )
-			{
-				bool isHot = false;
-				if( sHotSeedIp.size() > 6 )
-				{
-					string shIp = pfrom->addr.ToStringIP().c_str();
-					if( sHotSeedIp.find(shIp) != string::npos )
-					{
-						isHot = true;
-					}
-				}
-				if( isHot || (fConnectHotSever == 0) )
-				{
-				string str = "";
-				unsigned dEc = pfrom->strSubVer.find("(");
-				if (dEc != string::npos)
-				{
-					unsigned int iLen;
-					str = pfrom->strSubVer.substr(dEc + 1);
-					iLen = str.length() - 1;
-					str = str.substr(0, iLen);					
-					dEc = str.find(",");
-					if (dEc != string::npos)
-					{
-						string sNub = str.substr(0, dEc);
-						if( sNub.length() )
-						{
-							vDevnub = atoi(sNub);
-						}
-						if( vDevnub > 105 )
-						{
-							str = str.substr(dEc + 1);
-							dEc = str.find(",");
-							if (dEc != string::npos)
-							{
-								string sTime, scH;
-								scH = str.substr(0, dEc);
-								vConnetSrv = atoi(scH);
-								sTime = str.substr(dEc + 1);
-								aTime = atoi64(sTime);
-								
-								if( isHot || ((vConnetSrv > 0) && (aTime > 0)) )
-								{
-									ngT2 = GetAdjustedTime();
-									if( ngT2 > aTime )
-									{
-										ngT2 = ngT2 - aTime;
-										if( ngT2 > 1 )
-										{
-											fAdjTmDec = 1;
-											nTimeInterval = ngT2;
-										}
-									}else if( ngT2 < aTime ){
-										ngT2 = aTime - ngT2;
-										fAdjTmDec = 0;
-										nTimeInterval = ngT2;
-									}
-								}								
-							}
-						}
-					}
-				}
-				}
-			}
             pfrom->cleanSubVer = SanitizeString(pfrom->strSubVer);
         }
         if (!vRecv.empty())
@@ -3902,12 +3846,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             pfrom->fDisconnect = true;
             return true;
         }
-        if( vDevnub == 107 )
-        {
-            printf("connected to self at %s, disconnecting\n", pfrom->addr.ToString().c_str());
-            pfrom->fDisconnect = true;
-            return true;
-        }		
+
         // Be shy and don't send version until we hear
         if (pfrom->fInbound)
             pfrom->PushVersion();
@@ -3919,6 +3858,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         // Change version
         pfrom->PushMessage("verack");
         pfrom->ssSend.SetVersion(min(pfrom->nVersion, PROTOCOL_VERSION));
+
+        if (pfrom->nServices & NODE_I2P)
+            pfrom->SetSendStreamType(pfrom->GetSendStreamType() & ~SER_IPADDRONLY);
+        else
+            pfrom->SetSendStreamType(pfrom->GetSendStreamType() & SER_IPADDRONLY);
 
         if (!pfrom->fInbound)
         {
@@ -3953,7 +3897,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         }
 
         pfrom->fSuccessfullyConnected = true;
-        printf("receive version message: %s: version %d, blocks=%d, us=%s, them=%s, peer=%s, devNub=%u\n", pfrom->strSubVer.c_str(), pfrom->nVersion, pfrom->nStartingHeight, addrMe.ToString().c_str(), addrFrom.ToString().c_str(), pfrom->addr.ToString().c_str(), vDevnub);
+        printf("receive version message: %s: version %d, blocks=%d, us=%s, them=%s, peer=%s\n", pfrom->strSubVer.c_str(), pfrom->nVersion, pfrom->nStartingHeight, addrMe.ToString().c_str(), addrFrom.ToString().c_str(), pfrom->addr.ToString().c_str());
 
         cPeerBlockCounts.input(pfrom->nStartingHeight);
     }
@@ -3970,6 +3914,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     else if (strCommand == "verack")
     {
         pfrom->SetRecvVersion(min(pfrom->nVersion, PROTOCOL_VERSION));
+        if (pfrom->nServices & NODE_I2P)
+            pfrom->SetRecvStreamType(pfrom->GetRecvStreamType() & ~SER_IPADDRONLY);
+        else
+            pfrom->SetRecvStreamType(pfrom->GetRecvStreamType() & SER_IPADDRONLY);
     }
 
 

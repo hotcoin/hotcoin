@@ -39,7 +39,9 @@ LIBS += \
  $(DEPSDIR)/lib/libboost_chrono-mt.a \
  $(DEPSDIR)/lib/libssl.a \
  $(DEPSDIR)/lib/libcrypto.a \
- -lz
+ -lz \
+ -li2psam
+   
 else
 TESTLIBS += \
  -lboost_unit_test_framework-mt
@@ -52,9 +54,15 @@ LIBS += \
  -lboost_chrono-mt \
  -lssl \
  -lcrypto \
- -lz
+ -lz \
+ -li2psam
+ 
 TESTDEFS += -DBOOST_TEST_DYN_LINK
 endif
+
+# I2P Support
+DEFS +=  -DUSE_NATIVE_I2P -I"../i2psam"
+LIBS += -L"../i2psam"
 
 DEFS=-DMAC_OSX -DMSG_NOSIGNAL=0 -DBOOST_SPIRIT_THREADSAFE
 
@@ -83,6 +91,8 @@ OBJS= \
     obj/db.o \
     obj/init.o \
     obj/keystore.o \
+    obj/irc.o \
+    obj/i2p.o \
     obj/main.o \
     obj/net.o \
     obj/protocol.o \

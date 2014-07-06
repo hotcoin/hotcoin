@@ -83,6 +83,7 @@ Value getinfo(const Array& params, bool fHelp)
     obj.push_back(Pair("timeoffset",    (boost::int64_t)GetTimeOffset()));
     obj.push_back(Pair("connections",   (int)vNodes.size()));
     obj.push_back(Pair("proxy",         (proxy.first.IsValid() ? proxy.first.ToStringIPPort() : string())));
+    obj.push_back(Pair("ip",            GetLocalAddress().ToStringIP()));
     obj.push_back(Pair("difficulty",    (double)GetDifficulty()));
     obj.push_back(Pair("testnet",       fTestNet));
     if (pwalletMain) {
@@ -214,6 +215,20 @@ Value setaccount(const Array& params, bool fHelp)
     return Value::null;
 }
 
+std::string GetAccount(const std::string& strAddr)
+{
+	string rzt = "";
+	CBitcoinAddress address(strAddr);
+    if( address.IsValid() )
+	{
+		map<CTxDestination, string>::iterator mi = pwalletMain->mapAddressBook.find(address.Get());
+		if (mi != pwalletMain->mapAddressBook.end() && !(*mi).second.empty())
+		{
+			rzt = (*mi).second;
+		}
+	}
+	return rzt;
+}
 
 Value getaccount(const Array& params, bool fHelp)
 {
@@ -233,6 +248,21 @@ Value getaccount(const Array& params, bool fHelp)
     return strAccount;
 }
 
+std::string GetAddressesByAccount(const std::string& strAccount)
+{
+    string rzt = "";
+	BOOST_FOREACH(const PAIRTYPE(CBitcoinAddress, string)& item, pwalletMain->mapAddressBook)
+    {
+        const CBitcoinAddress& address = item.first;
+        const string& strName = item.second;
+        if (strName == strAccount)
+		{
+            rzt = address.ToString();
+			break;
+		}
+    }
+	return rzt;
+}
 
 Value getaddressesbyaccount(const Array& params, bool fHelp)
 {

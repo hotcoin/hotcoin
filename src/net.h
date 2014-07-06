@@ -30,6 +30,8 @@ extern int nBestHeight;
 inline unsigned int ReceiveFloodSize() { return 1000*GetArg("-maxreceivebuffer", 5*1000); }
 inline unsigned int SendBufferSize() { return 1000*GetArg("-maxsendbuffer", 1*1000); }
 
+void RestartNets();
+int ClearNodes(int iConnectToSeedNodes=1);
 void AddOneShot(std::string strDest);
 bool RecvLine(SOCKET hSocket, std::string& strLine, const bool ignR = false);
 bool GetMyExternalIP(CNetAddr& ipRet);
@@ -46,12 +48,22 @@ void StartNode(boost::thread_group& threadGroup);
 bool StopNode();
 void SocketSendData(CNode *pnode);
 
+bool BindListenNativeI2P();
+bool BindListenNativeI2P(SOCKET& hSocket);
+bool IsI2POnly();
+bool IsI2PEnabled();
+
+bool IsTorOnly();
+bool IsDarknetOnly();
+bool IsBehindDarknet();
+
 enum
 {
     LOCAL_NONE,   // unknown
     LOCAL_IF,     // address a local interface listens on
     LOCAL_BIND,   // address explicit bound to
     LOCAL_UPNP,   // address reported by UPnP
+    LOCAL_IRC,    // address reported by IRC (deprecated)
     LOCAL_HTTP,   // address reported by whatismyip.com and similar
     LOCAL_MANUAL, // address explicitly specified (-externalip=)
 
@@ -77,6 +89,7 @@ extern uint64 nLocalServices;
 extern uint64 nLocalHostNonce;
 extern CAddrMan addrman;
 extern int nMaxConnections;
+extern int nI2PNodeCount;
 
 extern std::vector<CNode*> vNodes;
 extern CCriticalSection cs_vNodes;
@@ -229,8 +242,11 @@ public:
     std::multimap<int64, CInv> mapAskFor;
 
     CNode(SOCKET hSocketIn, CAddress addrIn, std::string addrNameIn = "", bool fInboundIn=false) : ssSend(SER_NETWORK, INIT_PROTO_VERSION)
+      , nSendStreamType(SER_NETWORK | (((addrIn.nServices & NODE_I2P) || addrIn.IsNativeI2P()) ? 0 : SER_IPADDRONLY))
+      , nRecvStreamType(SER_NETWORK | (((addrIn.nServices & NODE_I2P) || addrIn.IsNativeI2P()) ? 0 : SER_IPADDRONLY))
     {
-        nServices = 0;
+        ssSend.SetType(nSendStreamType);
+		nServices = 0;
         hSocket = hSocketIn;
         nRecvVersion = INIT_PROTO_VERSION;
         nLastSend = 0;
@@ -283,8 +299,34 @@ public:
 private:
     CNode(const CNode&);
     void operator=(const CNode&);
+    int nSendStreamType;
+    int nRecvStreamType;
 public:
+    void SetSendStreamType(int nType)
+    {
+        nSendStreamType = nType;
+        ssSend.SetType(nSendStreamType);
+    }
 
+    void SetRecvStreamType(int nType)
+    {
+        nRecvStreamType = nType;
+        for (std::deque<CNetMessage>::iterator it = vRecvMsg.begin(), end = vRecvMsg.end(); it != end; ++it)
+        {
+            it->hdrbuf.SetType(nRecvStreamType);
+            it->vRecv.SetType(nRecvStreamType);
+        }
+    }
+
+    int GetSendStreamType() const
+    {
+        return nSendStreamType;
+    }
+
+    int GetRecvStreamType() const
+    {
+        return nRecvStreamType;
+    }
 
     int GetRefCount()
     {
@@ -336,6 +378,8 @@ public:
         // SendMessages will filter it again for knowns that were added
         // after addresses were pushed.
         if (addr.IsValid() && !setAddrKnown.count(addr))
+            // if receiver doesn't support i2p-address we don't send it
+            if ((this->nServices & NODE_I2P) || !addr.IsNativeI2P())
             vAddrToSend.push_back(addr);
     }
 

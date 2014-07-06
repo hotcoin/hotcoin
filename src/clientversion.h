@@ -10,7 +10,8 @@
 #define CLIENT_VERSION_MINOR       8
 #define CLIENT_VERSION_REVISION    6
 #define CLIENT_VERSION_BUILD       4
-#define CLIENT_VERSION_DEVNUB      120
+#define CLIENT_VERSION_DEVNUB      122
+#define HOTCOIN_RELEASE            7
 
 // Set to true for release, false for prerelease or test build
 #define CLIENT_VERSION_IS_RELEASE  true

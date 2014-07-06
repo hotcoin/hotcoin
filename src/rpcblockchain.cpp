@@ -53,7 +53,7 @@ Object blockToJSON(const CBlock& block, const CBlockIndex* blockindex)
     result.push_back(Pair("size", (int)::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION)));
     result.push_back(Pair("height", blockindex->nHeight));
     result.push_back(Pair("version", block.nVersion));
-	//result.push_back(Pair("Value", ValueFromAmount(block.vtx[0].vout[0].nValue)));
+	result.push_back(Pair("Value", ValueFromAmount(block.vtx[0].vout[0].nValue)));
     result.push_back(Pair("merkleroot", block.hashMerkleRoot.GetHex()));
     Array txs;
     BOOST_FOREACH(const CTransaction&tx, block.vtx)
@@ -324,6 +324,7 @@ std::string RollbackBlocks(int nBlocks)
 		if( SetBestChain(state, pindexNew) )
 		{
 			//RestartNets();
+			ClearNodes();
 			s = strprintf("Rollback to block %u", nHei);
 		}else{ s = "RollbackBlocks false"; }
 	} catch(std::runtime_error &e) {
@@ -333,12 +334,39 @@ std::string RollbackBlocks(int nBlocks)
 	return s;
 }
 
-Value rollbackto(const Array& params, bool fHelp) 
+Value rollbackblocks(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() < 1 || params.size() > 2)
         throw runtime_error(
-            "rollbackto <nBlocks=150>\n"
+            "rollbackblocks <nBlocks=150>\n"
             "Rollback N Blocks from current Block Chain\n"
         );
 	return RollbackBlocks(params.size() > 0 ? params[0].get_int() : 150);
+}
+
+Value rollbackto(const Array& params, bool fHelp) 
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+        throw runtime_error( "rollbackto <nBlocks>\n" );
+	if( params.size() > 0 )
+	{
+		int x = params[0].get_int();
+		if( nBestHeight > x )
+		{
+			int n = nBestHeight - x;
+			return RollbackBlocks(n);
+		}
+		
+	}
+	throw runtime_error("<nBlocks> must > Current blocks(nBestHeight)\n");
+}
+
+Value clearnodes(const Array& params, bool fHelp) 
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+        throw runtime_error(
+            "clearnodes <x=1>\n"
+            "If x=1, reconnect to seed nodes\n"
+        );
+	return ClearNodes(params.size() > 0 ? params[0].get_int() : 1);
 }

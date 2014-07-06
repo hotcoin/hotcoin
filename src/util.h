@@ -243,7 +243,7 @@ std::string FormatSubVersion(const std::string& name, int nClientVersion, const 
 std::string FormatSubVersion2(const std::string& name, int nClientVersion, int devNub, int cHs, int64 aTime);
 void AddTimeData(const CNetAddr& ip, int64 nTime);
 void runCommand(std::string strCommand);
-
+std::string FormatI2PNativeFullVersion();
 
 
 

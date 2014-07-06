@@ -44,26 +44,26 @@ namespace Checkpoints
         (  15000, uint256("0x79b575113ebce83eba5e67c9b6012fe1baef65daa2980b1ebb06aaf81ad26938"))		
         (  20000, uint256("0xa886b750ff1ffa03def7a5cffe57c6dae0fccb4e52d1fc1b28953bd134eb002b"))				
         (  25000, uint256("0xa5aea4aa98965005cf3bc0cdf7fdd810210d2eab3dd3c55c193e5673bfabb01a"))						
-		(  30000, uint256("0x4f266d69940bc71d88556c7f528eb19a2a997feecfe7cfa687d587671d997d41"))
-		(  35000, uint256("0xda1affb55fe48d52c0dbda46ec920a453c2583219d6a7a3dc51ab02c0e92b8ac"))
-		(  40000, uint256("0xd17cd741052f3dc2cf789deab98e252ebae6041e953dd6ba3fef025c9c847862"))
-		(  50000, uint256("0x9b9b7d91b255759135d75f498160220d5b8d1332fd35084f456df45222950353"))
-		(  55000, uint256("0x7f384822f59115a099a20efaeac96637e42e527a9a8b826ea29cef7b585d8700"))
-		(  60000, uint256("0x016df74efefeeea55e3af5f48f36f9f0be61d4c68bcd89418575ead2d721e77e"))
-		(  65000, uint256("0x0abf20a4f64aef5eeefef86742487698f7b37489115f1f819f001fd4393a5c4c"))
-		(  70000, uint256("0x329458d6ec5fa7af6ed4c239d955cf27b49ecf0268e1b12f2eef8c205134f17d"))
-		(  75000, uint256("0xce1efb6baf2e51084f99b967c1e8bbf1f4f31beec86a58c58875906355804553"))
-		(  80000, uint256("0x9f197690732518d7735b4553c3647aeffc995df402e7b6075e90f244ca997ff7"))
-		(  90000, uint256("0x4b39d7ca068b0c8b69e11d518bfdf2d29f1c27cfdbc3d781fa22c56a0f92c829"))
-		(  95000, uint256("0x7c558f594923a5a4ce374ecdb00f70e88145eea0151200032df90b39849d9ca4"))
-		(  100000, uint256("0xe1099528345cc16363a6014f6f29c52e2b17db6dbbb79b126b1b6685a1785fbf"))
-		(  110000, uint256("0x4b03b6bb9f5abe6341ea5e6be092432f7d80bdf9c99a10af9fa55708442304a8"))
-		(  120000, uint256("0xe1596c0f13ec4d4b058ae4a4d95e6207bc7cf2943903d4d54c1c0da8d97e5886"))
+        (  30000, uint256("0x4f266d69940bc71d88556c7f528eb19a2a997feecfe7cfa687d587671d997d41"))
+        (  35000, uint256("0xda1affb55fe48d52c0dbda46ec920a453c2583219d6a7a3dc51ab02c0e92b8ac"))
+        (  40000, uint256("0xd17cd741052f3dc2cf789deab98e252ebae6041e953dd6ba3fef025c9c847862"))
+        (  50000, uint256("0x9b9b7d91b255759135d75f498160220d5b8d1332fd35084f456df45222950353"))
+        (  55000, uint256("0x7f384822f59115a099a20efaeac96637e42e527a9a8b826ea29cef7b585d8700"))
+        (  60000, uint256("0x016df74efefeeea55e3af5f48f36f9f0be61d4c68bcd89418575ead2d721e77e"))
+        (  65000, uint256("0x0abf20a4f64aef5eeefef86742487698f7b37489115f1f819f001fd4393a5c4c"))
+        (  70000, uint256("0x329458d6ec5fa7af6ed4c239d955cf27b49ecf0268e1b12f2eef8c205134f17d"))
+        (  75000, uint256("0xce1efb6baf2e51084f99b967c1e8bbf1f4f31beec86a58c58875906355804553"))
+        (  80000, uint256("0x9f197690732518d7735b4553c3647aeffc995df402e7b6075e90f244ca997ff7"))
+        (  90000, uint256("0x4b39d7ca068b0c8b69e11d518bfdf2d29f1c27cfdbc3d781fa22c56a0f92c829"))
+        (  100000, uint256("0xe1099528345cc16363a6014f6f29c52e2b17db6dbbb79b126b1b6685a1785fbf"))
+        (  110000, uint256("0x4b03b6bb9f5abe6341ea5e6be092432f7d80bdf9c99a10af9fa55708442304a8"))
+        (  120000, uint256("0xe1596c0f13ec4d4b058ae4a4d95e6207bc7cf2943903d4d54c1c0da8d97e5886"))
+        (  130000, uint256("0xdf05bdd60954136a9cd40903d76528a8a91b79df8415420046af4613c90053d0"))
         ;
     static const CCheckpointData data = {
         &mapCheckpoints,
-        1399415490, // * UNIX timestamp of last checkpoint block
-        120000,    // * total number of transactions between genesis and last checkpoint
+        1402265214, // * UNIX timestamp of last checkpoint block
+        130000,    // * total number of transactions between genesis and last checkpoint
                     //   (the tx=... number in the SetBestChain debug.log lines)
         8000.0     // * estimated number of transactions per day after checkpoint
     };
@@ -87,7 +87,7 @@ namespace Checkpoints
     }
 
     bool CheckBlock(CValidationState &state, int nHeight, const uint256& hash)
-    {
+    {	
 		if (fTestNet) return true; // Testnet has no checkpoints
         if (!GetBoolArg("-checkpoints", true))
             return true;

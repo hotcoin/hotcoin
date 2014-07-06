@@ -147,6 +147,8 @@ extern json_spirit::Value getgenerate(const json_spirit::Array& params, bool fHe
 extern json_spirit::Value setgenerate(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value getnetworkhashps(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value rollbackto(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value rollbackblocks(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value clearnodes(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value gethashespersec(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value getmininginfo(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value getworkex(const json_spirit::Array& params, bool fHelp);
