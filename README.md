@@ -12,7 +12,7 @@ What is Hotcoin?
 
 Hotcoin is a lite version of Bitcoin using scrypt as a proof-of-work algorithm.
  - 2 minute block targets
- - subsidy halves in 120k blocks (~4 years)
+ - subsidy halves in 120k blocks (~10 years)
  - ~29 million total coins
 
 The rest is the same as Bitcoin.
@@ -21,12 +21,16 @@ The rest is the same as Bitcoin.
  - Lowest difficulty, CPU and GPU both can mining,
  - The whole network within two minutes only accept one block,
  - Queuing mining, Anti Botnet, Resistant ASIC and smart mining pool,
- - Energy saving and environmental protection.
+ - Energy saving and environmental protection,
+ - I2P network support.
+   Compile in ubuntu, please compile i2psam at first, as follow:
+   cd i2psam
+   make -f makefile.unix
 
 Warning: Without our permission, please don't copy and use this code to other coins.
  
 
-Hotcoin is the first ¡°queue mining¡± coin on the word, What is Queuing mining?
+Hotcoin is the first ¡°queuing mining¡± coin on the word, What is Queuing mining?
 Queuing mining, each miner find one block, then the miner must wait for 120 minutes£¨60 blocks£©, then can to mining next block.
 The miner¡®s wallet default address, use for mining, in last 6 days must have more than one (>=1) recv coin record,
 Else, the miner find block will be rejected by othes.
