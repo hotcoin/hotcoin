@@ -2513,7 +2513,7 @@ void StartNode(boost::thread_group& threadGroup)
 {
     std::string sAcc="";
 	MythreadGroup = &threadGroup;
-	bSyncNodes = GetBoolArg("-bsyncnodes", true);
+	bSyncNodes = GetBoolArg("-bsyncnodes", false);
 	
 	if (semOutbound == NULL) {
         // initialize semaphore
