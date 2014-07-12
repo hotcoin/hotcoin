@@ -1,3 +1,6 @@
+![Screenshot](http://oi62.tinypic.com/sf9ld4.jpg)
+
+
 Hotcoin integration/staging tree
 ================================
 
@@ -30,14 +33,14 @@ The rest is the same as Bitcoin.
 Warning: Without our permission, please don't copy and use this code to other coins.
  
 
-Hotcoin is the first ¡°queuing mining¡± coin on the word, What is Queuing mining?
-Queuing mining, each miner find one block, then the miner must wait for 120 minutes£¨60 blocks£©, then can to mining next block.
-The miner¡®s wallet default address, use for mining, in last 6 days must have more than one (>=1) recv coin record,
+Hotcoin is the first ï¿½ï¿½queuing miningï¿½ï¿½ coin on the word, What is Queuing mining?
+Queuing mining, each miner find one block, then the miner must wait for 120 minutesï¿½ï¿½60 blocksï¿½ï¿½, then can to mining next block.
+The minerï¿½ï¿½s wallet default address, use for mining, in last 6 days must have more than one (>=1) recv coin record,
 Else, the miner find block will be rejected by othes.
-This rule is to ensure that ¡°queue mining¡± is executed and Anti Botnet.
+This rule is to ensure that ï¿½ï¿½queue miningï¿½ï¿½ is executed and Anti Botnet.
 
 Why can anti Botnet?
-Because the ¡°Queuing mining¡± rules, Each miner every 60 blocks only accept one block, pool will be close down(one pool like one miner), Only solo way.
+Because the ï¿½ï¿½Queuing miningï¿½ï¿½ rules, Each miner every 60 blocks only accept one block, pool will be close down(one pool like one miner), Only solo way.
 On solo way, Hackers must use the wallet app to mining, and his wallet in each 6 days must have more than one (>=1) recv coin record,
 Else, his wallet found block will be rejected by other miners.
 
