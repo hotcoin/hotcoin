@@ -1,5 +1,6 @@
 ![Screenshot](http://oi62.tinypic.com/sf9ld4.jpg)
 
+![Screenshot](http://oi60.tinypic.com/23rnv4g.jpg)
 
 Hotcoin integration/staging tree
 ================================
